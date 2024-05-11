@@ -25,8 +25,3 @@ fn main() -> std::io::Result<()> {
 
   Ok(())
 }
-
-
-pub fn parse_input(arguments: &Vec<String>, cwd: &String) -> String {
-
-}

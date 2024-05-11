@@ -1,8 +1,8 @@
 use crate::shellmemory::ShellMemory;
 
-pub fn interpreter(shell_memory: &mut ShellMemory, arguments: &Vec<String>, num_of_args: &usize, cwd: &String) -> Result<Option<String>,Err>{
+pub fn interpreter(shell_memory: &mut ShellMemory, arguments: &Vec<String>, num_of_args: &usize, cwd: &String) {
   if *num_of_args < 1 {
-    return Err("Error: interpreter must be called with at least one argument.");
+    println!("Error: interpreter must be called with at least one argument.");
   }
 
   match arguments.first().unwrap().as_str() {
@@ -16,26 +16,24 @@ pub fn interpreter(shell_memory: &mut ShellMemory, arguments: &Vec<String>, num_
     },
     "set" => {
       if *num_of_args < 3 {
-        return Err("Error: set command must be called with at least three arguments");
+        println!("Error: set command must be called with at least three arguments");
       }
 
       let key: String = arguments[1].clone();
       let value: String = arguments[2..].join(" ");
 
       shell_memory.set_value(&key, &value)?;
-      Ok(None)
     },
     "print" => {
       if *num_of_args != 2 {
-        return Err("Error: print command must be called with two arguments")
+        println!("Error: print command must be called with two arguments")
       }
 
       println!("{}", arguments[1]);
-      Ok(None)
     },
     "echo" => {
       if *num_of_args > 2 {
-        return Err("Error: echo command must be called with at least two arguments")
+        println!("Error: echo command must be called with at least two arguments")
       }
 
       if arguments[1].starts_with('$') {
@@ -44,23 +42,20 @@ pub fn interpreter(shell_memory: &mut ShellMemory, arguments: &Vec<String>, num_
         match shell_memory.get_value(&key) {
           Ok(value) => {
             println!("{}", value);
-            Ok(None)
           },
-          Err(e) => Err(e)
+          Err(e) => println!("{}", e)
         }
       } else {
         println!("{}", arguments[1]);
-        Ok(None)
       }
     },
     "resetvars" => {
       shell_memory.clear_variables();
-      Ok(None)
     }
     "run" => {
       todo!();
       if *num_of_args != 2 {
-        return Err("Error: run command must be called with at least 2 arguments")
+        println!("Error: run command must be called with at least 2 arguments")
       }
 
     },
@@ -114,7 +109,7 @@ pub fn interpreter(shell_memory: &mut ShellMemory, arguments: &Vec<String>, num_
       todo!();
     },
     _ => {
-      Err("Invalid command")
+      println!("Invalid command")
     }
   }
 }

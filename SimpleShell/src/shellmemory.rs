@@ -1,3 +1,5 @@
+use std::error::Error;
+
 #[derive(Clone, Debug)]
 struct MemoryStruct {
   key: Option<String>,
@@ -34,7 +36,7 @@ impl ShellMemory {
     self.memory[index].value = None;
   }
 
-  pub fn alloc_frame(&mut self, pid: String, index: &mut [usize; 3], valid_bit: &mut [usize; 3]) -> Result<(),String> {
+  pub fn alloc_frame(&mut self, pid: String, index: &mut [usize; 3], valid_bit: &mut [usize; 3]) -> Result<(), Box<dyn Error>> {
     for (i, mem) in self.memory[..self.frame_store_size].iter().enumerate() {
       let mut j = i;
       while j < i + 3 && j < self.frame_store_size {
@@ -53,7 +55,7 @@ impl ShellMemory {
         return Ok(())
       }
     }
-    Err("Insufficient memory to allocate initial pages".to_string())
+    Err("Insufficient memory to allocate initial pages".into())
   }
 
   pub fn set_value_at(&mut self, index: usize, pid: String, value: String, valid_bit: &mut usize) {
@@ -102,7 +104,7 @@ impl ShellMemory {
   }
 
   fn clear_frame(&mut self, index: usize) {
-    for mem in self.memory[index..index  + 3].iter_mut() {
+    for mem in self.memory[index..index + 3].iter_mut() {
       mem.key = None;
       mem.value = None;
     }
