@@ -1,5 +1,5 @@
-use std::error::Error;
-
+use crate::errors::ShellErrors;
+use crate::errors::ShellErrors::*;
 #[derive(Clone, Debug)]
 struct MemoryStruct {
   key: Option<String>,
@@ -36,7 +36,7 @@ impl ShellMemory {
     self.memory[index].value = None;
   }
 
-  pub fn alloc_frame(&mut self, pid: String, index: &mut [usize; 3], valid_bit: &mut [usize; 3]) -> Result<(), Box<dyn Error>> {
+  pub fn alloc_frame(&mut self, pid: String, index: &mut [usize; 3], valid_bit: &mut [bool; 3]) -> Result<(), ShellErrors> {
     for (i, mem) in self.memory[..self.frame_store_size].iter().enumerate() {
       let mut j = i;
       while j < i + 3 && j < self.frame_store_size {
@@ -50,18 +50,18 @@ impl ShellMemory {
         for k in i..i + 3 {
           self.memory[k].key = Some(pid.clone());
           index[k - i] = k;
-          valid_bit[k - i] = 0usize;
+          valid_bit[k - i] = false;
         }
         return Ok(())
       }
     }
-    Err("Insufficient memory to allocate initial pages".into())
+    Err(InitialFrameAllocationFailed)
   }
 
-  pub fn set_value_at(&mut self, index: usize, pid: String, value: String, valid_bit: &mut usize) {
+  pub fn set_value_at(&mut self, index: usize, pid: String, value: String, valid_bit: &mut bool) {
     self.memory[index].key = Some(pid);
     self.memory[index].value = Some(value);
-    *valid_bit = 1;
+    *valid_bit = true;
   }
 
   pub fn get_value_at(&self, index: usize) -> Option<String> {
@@ -127,8 +127,8 @@ mod shellmemory_tests {
   use super::*;
   #[test]
   fn test_create() {
-    let frame_store_size: usize = 10;
-    let var_store_size: usize = 10;
+    let frame_store_size: usize = 5;
+    let var_store_size: usize = 5;
     let total_size = frame_store_size + var_store_size;
     let shell_memory: ShellMemory = ShellMemory::new(frame_store_size, var_store_size);
 

@@ -1,27 +1,18 @@
+#![allow(warnings)] //Suppress warnings while devving
+
 mod shellmemory;
 mod interpreter;
 mod kernel;
 mod pcb;
-mod cpu;
+mod errors;
 
-use std::{env, fs, process};
+use std::env;
 
 fn main() -> std::io::Result<()> {
-  let args: Vec<String> = env::args().collect();
+  let args = env::args();
 
   if args.len() < 2 {
     return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "Error: SimpleShell must be called with the hard drive name as an argument."));
   }
-
-  let hard_drive_name: &String = &args[1];
-  let mut format: bool = false;
-
-  if args.len() == 3 && args[2] == "-f" {
-    format = true;
-  }
-
-  fs::remove_dir_all("backing_store")?;
-  fs::create_dir("backing_store")?;
-
   Ok(())
 }

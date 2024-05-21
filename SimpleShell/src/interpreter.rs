@@ -1,6 +1,26 @@
+use std::error::Error;
+use crate::errors::ShellErrors;
 use crate::shellmemory::ShellMemory;
 
-pub fn interpreter(shell_memory: &mut ShellMemory, arguments: &Vec<String>, num_of_args: &usize, cwd: &String) {
+pub fn parser(shell_memory: &mut ShellMemory, user_input: &mut String, cwd: &String) -> Result<(), ShellErrors> {
+  let tokens: Vec<&str>= user_input.split(';').collect();
+
+
+  for token in tokens.iter() {
+    let token = token.trim();
+    let arguments: Vec<_> = token.split_whitespace().map(|s|s.to_string()).collect();
+    let num_of_args = arguments.len();
+
+    if let Err(e) = interpreter(shell_memory, &arguments, &num_of_args, cwd) {
+      return Err(e)
+    }
+  }
+
+  Ok(())
+}
+
+
+pub fn interpreter(shell_memory: &mut ShellMemory, arguments: &Vec<String>, num_of_args: &usize, cwd: &String) -> Result<(), ShellErrors> {
   if *num_of_args < 1 {
     println!("Error: interpreter must be called with at least one argument.");
   }
@@ -8,11 +28,9 @@ pub fn interpreter(shell_memory: &mut ShellMemory, arguments: &Vec<String>, num_
   match arguments.first().unwrap().as_str() {
     "help" => {
       todo!();
-      Ok(Some("help".to_string()))
     },
     "quit" => {
       todo!();
-      Ok(Some("Quitting Simple Shell".to_string()))
     },
     "set" => {
       if *num_of_args < 3 {
@@ -22,7 +40,8 @@ pub fn interpreter(shell_memory: &mut ShellMemory, arguments: &Vec<String>, num_
       let key: String = arguments[1].clone();
       let value: String = arguments[2..].join(" ");
 
-      shell_memory.set_value(&key, &value)?;
+      shell_memory.set_value(&key, &value);
+      Ok(())
     },
     "print" => {
       if *num_of_args != 2 {
@@ -30,86 +49,24 @@ pub fn interpreter(shell_memory: &mut ShellMemory, arguments: &Vec<String>, num_
       }
 
       println!("{}", arguments[1]);
+      Ok(())
     },
     "echo" => {
-      if *num_of_args > 2 {
-        println!("Error: echo command must be called with at least two arguments")
-      }
-
-      if arguments[1].starts_with('$') {
-        let key: String = arguments[1].chars().skip(1).collect();
-
-        match shell_memory.get_value(&key) {
-          Ok(value) => {
-            println!("{}", value);
-          },
-          Err(e) => println!("{}", e)
-        }
-      } else {
-        println!("{}", arguments[1]);
-      }
+      todo!()
     },
     "resetvars" => {
-      shell_memory.clear_variables();
+      todo!()
     }
     "run" => {
       todo!();
-      if *num_of_args != 2 {
-        println!("Error: run command must be called with at least 2 arguments")
-      }
 
     },
     "exec" => {
       todo!();
     },
-    "ls" => {
-      todo!();
-
-    },
-    "cat" => {
-      todo!();
-    },
-    "rm" => {
-      todo!();
-    },
-    "create" => {
-      todo!();
-    },
-    "write" => {
-      todo!();
-    },
-    "find_file" => {
-      todo!();
-    },
-    "read" => {
-      todo!();
-    },
-    "copy_in" => {
-      todo!();
-    },
-    "copy_out" => {
-      todo!();
-    },
-    "size" => {
-      todo!();
-    },
-    "seek" => {
-      todo!();
-    },
-    "freespace" => {
-      todo!();
-    },
-    "frag_degree" => {
-      todo!();
-    },
-    "defragment" => {
-      todo!();
-    },
-    "recover" => {
-      todo!();
-    },
     _ => {
-      println!("Invalid command")
+      println!("Invalid command");
+      Ok(())
     }
   }
 }

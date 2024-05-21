@@ -1,19 +1,15 @@
-mod shellmemory;
-mod pcb;
-mod cpu;
-
+use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
 use std::error::Error;
+use crate::errors::ShellErrors::PageFault;
 
-
-use crate::cpu::{process_complete, run_cpu};
 use crate::pcb::PCB;
 use crate::shellmemory::ShellMemory;
 
 struct Kernel {
-  all_pcb: HashMap<usize, PCB>,
-  process_queue: VecDeque<usize>,
-  lru_cache: VecDeque<(usize, usize)>,
+  all_pcb: HashMap<usize, RefCell<PCB>>, //PID -> PCB
+  process_queue: VecDeque<usize>, //PIDs
+  lru_cache: VecDeque<(usize, usize)>, //PID, Page_index
   pid_counter: usize
 }
 
@@ -31,11 +27,11 @@ impl Kernel {
     let new_pcb = PCB::new(shell_memory, &self.pid_counter, script_source)?;
     let page_limit =  if new_pcb.page_table_size < 2 { new_pcb.page_table_size } else { 2 };
 
-    self.all_pcb.insert(self.pid_counter, new_pcb);
+    self.all_pcb.insert(self.pid_counter, RefCell::new(new_pcb));
     self.process_queue.push_back(self.pid_counter);
 
     for i in 0..page_limit {
-      let page_index = self.all_pcb.get(&self.pid_counter).unwrap().page_table[i].page_index;
+      let page_index = self.all_pcb.get(&self.pid_counter).unwrap().borrow().page_table[i].page_index;
       self.lru_cache.push_front((self.pid_counter, page_index))
     }
 
@@ -43,54 +39,45 @@ impl Kernel {
     Ok(())
   }
 
-  fn run_process(&mut self, shell_memory: &mut ShellMemory, pcb: &mut PCB, page_index: &usize, start_pos: &usize, program_counter: &mut usize, size: &mut usize, valid_bit: &mut usize, cwd: &String) -> Result<(), Box<dyn Error>> {
-    if let Err(_) = run_cpu(shell_memory, start_pos, program_counter, size, valid_bit, cwd) {
-      if let Err(_) = pcb.load_page(shell_memory, *page_index) {
-        let victim_page = self.lru_cache.pop_back().unwrap();
+  fn run_process(&mut self, shell_memory: &mut ShellMemory, pid: &usize, cwd: &String) -> Result<(), Box<dyn Error>> {
+    let mut pcb = self.all_pcb.get(pid).unwrap().borrow_mut();
 
-        match self.all_pcb.iter_mut().find(|(pid, _)| **pid != victim_page.0) {
-          Some((_, found_pcb)) => {
-            found_pcb.evict_page(shell_memory, victim_page.1);
-            pcb.load_page(shell_memory, *page_index)?;
+    match pcb.run_process(shell_memory, cwd) {
+      Ok(page_index) => {
+       let index = self.lru_cache.iter().enumerate().find(|(i,(_, page_id))|{
+         *page_id == page_index
+       })
+         .map(|(i,_)| i);
+        self.lru_cache.remove(index.unwrap());
+        self.lru_cache.push_front((*pid, page_index))
+      },
+      Err(e) => { //If we page fault
+        match e {
+          PageFault(page_index) => {
+            if let Err(_) = pcb.load_page(shell_memory, page_index) {
+              let victim_page = self.lru_cache.pop_back().unwrap(); //Get LRU page
+              self.all_pcb.get(&victim_page.0).unwrap().borrow_mut().evict_page(shell_memory, victim_page.1); //Evict that page
+              pcb.load_page(shell_memory, victim_page.1)? //Load page @ evicted page location
+            }
+            self.lru_cache.push_front((*pid, page_index)); //Place page into LRU
+            self.process_queue.push_back(*pid); //Place process back of queue
           },
-          None => return Err("Could not find PCB to be deleted".into())
+          _ => return Err(Box::try_from(e).unwrap())
         }
       }
-      self.lru_cache.push_front((pcb.pid, pcb.page_table[*page_index].page_index));
-      self.process_queue.push_back(pcb.pid);
-      return Err("Page fault and loaded".into())
     }
-
-    match self.lru_cache.binary_search(&(pcb.pid, *page_index)) {
-      Ok(i) => {
-        let page = self.lru_cache.remove(i).unwrap(); //We can guarantee this does not panic
-        self.lru_cache.push_front(page);
-        Ok(())
-      },
-      Err(_) => {
-        return Err("Cached Page not found (How did this happen??)".into())
-      }
-    }
+    Ok(())
   }
 
-  pub fn run_process_rr(&mut self, shell_memory: &mut ShellMemory, cwd: &String) -> Result<(), Box<dyn Error>> {
-    'scheduler: while !self.queue_done() {
-      let mut curr_pcb = self.all_pcb.get_mut(&self.process_queue.pop_front().unwrap()).unwrap();
-
-
-
-
-
-
-
+  pub fn run_process_fifo(&mut self, shell_memory: &mut ShellMemory, cwd: &String) -> Result<(), Box<dyn Error>> {
+    while !self.queue_done(){
+      let pid = self.process_queue.pop_front().unwrap();
+      self.run_process(shell_memory, &pid, cwd).expect("TODO: panic message");
     }
-    self.process_queue.clear();
-    self.lru_cache.clear();
-    self.all_pcb.clear();
     Ok(())
   }
 
   fn queue_done(&self) -> bool {
-    self.process_queue.iter().all(|pid| self.all_pcb.get(pid).unwrap().pcb_complete())
+    self.process_queue.iter().all(|pid| self.all_pcb.get(pid).unwrap().borrow().pcb_complete())
   }
 }
