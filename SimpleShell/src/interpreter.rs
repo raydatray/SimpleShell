@@ -5,7 +5,6 @@ use crate::shellmemory::ShellMemory;
 pub fn parser(shell_memory: &mut ShellMemory, user_input: &mut String, cwd: &String) -> Result<(), ShellErrors> {
   let tokens: Vec<&str>= user_input.split(';').collect();
 
-
   for token in tokens.iter() {
     let token = token.trim();
     let arguments: Vec<_> = token.split_whitespace().map(|s|s.to_string()).collect();
@@ -40,7 +39,7 @@ pub fn interpreter(shell_memory: &mut ShellMemory, arguments: &Vec<String>, num_
       let key: String = arguments[1].clone();
       let value: String = arguments[2..].join(" ");
 
-      shell_memory.set_value(&key, &value);
+      shell_memory.set_var(&key, &value);
       Ok(())
     },
     "print" => {
@@ -68,5 +67,23 @@ pub fn interpreter(shell_memory: &mut ShellMemory, arguments: &Vec<String>, num_
       println!("Invalid command");
       Ok(())
     }
+  }
+}
+
+#[cfg(test)]
+mod interpreter_tests {
+  use super::*;
+  pub const FRAME_STORE_SIZE: usize = 6;
+  pub const VAR_STORE_SIZE: usize =  4;
+  pub const TOTAL_SIZE: usize = FRAME_STORE_SIZE + VAR_STORE_SIZE;
+
+  #[test]
+  fn test_parse_single_line() {
+
+  }
+
+  #[test]
+  fn test_parse_multi_line() {
+
   }
 }

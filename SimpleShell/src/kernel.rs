@@ -7,7 +7,7 @@ use crate::pcb::PCB;
 use crate::shellmemory::ShellMemory;
 
 struct Kernel {
-  all_pcb: HashMap<usize, RefCell<PCB>>, //PID -> PCB
+  all_pcb: HashMap<usize, RefCell<PCB>>, //The hashmap owns the PCBs in RefCells (for interior mutability) me > borrow checker
   process_queue: VecDeque<usize>, //PIDs
   lru_cache: VecDeque<(usize, usize)>, //PID, Page_index
   pid_counter: usize

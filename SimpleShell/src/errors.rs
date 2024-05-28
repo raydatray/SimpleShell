@@ -2,14 +2,16 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::io;
 
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 pub enum ShellErrors {
   PageFault(usize),
   InitialFrameAllocationFailed,
   NoFreePages,
   IoError(String)
 }
+
 impl Error for ShellErrors {}
+
 impl Display for ShellErrors {
   fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
     let message = match self {
@@ -19,7 +21,7 @@ impl Display for ShellErrors {
       Self::IoError(v) => format!("{}",v)
     };
 
-    write!(f, " Error: {message}")
+    write!(f, "Error: {message}")
   }
 }
 
