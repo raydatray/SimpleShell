@@ -16,7 +16,7 @@ pub struct PCB {
   pub frames_executed: usize,
   pub page_table: Vec<PAGE>,
   pub page_table_size: usize,
-  source_file: File
+  source_file: BufReader<File>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -51,13 +51,12 @@ impl PartialEq for PCB {
 impl PCB {
   pub fn new(shell_memory: &mut ShellMemory, pid: &usize, file_name: &String) -> Result<PCB, ShellErrors> {
     let source_file = File::open(file_name)?;
-    let program_size = Self::count_lines(&source_file)?;
+    let mut file_reader = BufReader::new(source_file);
+    let program_size = Self::count_lines(&mut file_reader)?;
     let page_table_size = if program_size % 3 == 0 { program_size / 3 } else { program_size / 3 + 1 };
     let mut page_table: Vec<PAGE> = (0..page_table_size).map(|i| PAGE::new(&pid, &i)).collect();
 
     let pages_to_load = if page_table_size < 2 { page_table_size } else { 2 };
-    let mut reader = BufReader::new(&source_file);
-    reader.rewind()?;
 
     for i in 0..pages_to_load {
       let curr_page = &mut page_table[i];
@@ -69,7 +68,7 @@ impl PCB {
 
       for j in 0..3 {
         let mut line = String::new();
-        if reader.read_line(&mut line)? != 0  {
+        if file_reader.read_line(&mut line)? != 0  {
           shell_memory.set_value_at(curr_page.index[j], &pid.to_string(), &line.clone(), &mut curr_page.valid_bit[j]);
           line.clear();
         } else {
@@ -86,13 +85,14 @@ impl PCB {
       frames_executed: 0,
       page_table,
       page_table_size,
-      source_file
+      source_file: file_reader
     })
   }
 
-  fn count_lines(file: &File) -> Result<usize, std::io::Error> {
-    let mut lines = BufReader::new(file).lines();
-    let count= lines.try_fold(0, |acc, line| line.map(|_| acc + 1))?;
+  fn count_lines(file: &mut BufReader<File>) -> Result<usize, std::io::Error> {
+    let mut lines  = file.lines();
+    let count = lines.try_fold(0, |acc, line| line.map(|_| acc + 1))?;
+    file.rewind()?;
     Ok(count)
   }
 
@@ -104,10 +104,9 @@ impl PCB {
       return Err(ShellErrors::NoFreePages)
     }
 
-    let mut reader = BufReader::new(&self.source_file);
     for i in 0..3 {
       let mut line = String::new();
-      if reader.read_line(&mut line)? != 0  {
+      if self.source_file.read_line(&mut line)? != 0  {
         shell_memory.set_value_at(curr_page.index[i], &self.pid.to_string(), &line.clone(), &mut curr_page.valid_bit[i]);
         line.clear();
       } else {
@@ -122,14 +121,14 @@ impl PCB {
     for i in 0..3 {
       println!("{}", shell_memory.get_value_at(self.page_table[page_index].index[i]).unwrap()); //We can guarantee this will not panic
       shell_memory.free_at(self.page_table[page_index].index[i]);
-      self.page_table[page_index].index[i] = 0;
+      self.page_table[page_index].index[i] = 1000;
       self.page_table[page_index].valid_bit[i] = false;
     }
     println!("End of victim page contents");
   }
 
   pub fn run_process(&mut self, shell_memory: &mut ShellMemory, cwd: &String) -> Result<usize, ShellErrors> {
-    if self.page_table[self.pages_executed].valid_bit[self.frames_executed] == false {
+    if !self.page_table[self.pages_executed].valid_bit[self.frames_executed] {
       return Err(PageFault(self.page_table[self.pages_executed].index[self.frames_executed]));
     }
     parser(shell_memory, &mut shell_memory.get_value_at(self.page_table[self.pages_executed].index[self.frames_executed]).unwrap(), cwd)?;
@@ -154,7 +153,7 @@ impl PCB {
 
 #[cfg(test)]
 mod pcb_tests {
-  use crate::errors::ShellErrors::InitialFrameAllocationFailed;
+  use crate::errors::ShellErrors::{InitialFrameAllocationFailed, NoFreePages};
   use super::*;
   pub const FRAME_STORE_SIZE: usize = 12;
   pub const VAR_STORE_SIZE: usize =  4;
@@ -333,9 +332,9 @@ mod pcb_tests {
   #[test]
   fn test_count_lines() {
     let test_file_path = "examples/test1.txt".to_string();
-    let test_file = File::open(test_file_path).unwrap();
+    let mut test_file = BufReader::new(File::open(test_file_path).unwrap());
 
-    let count = PCB::count_lines(&test_file);
+    let count = PCB::count_lines(&mut test_file);
     assert!(count.is_ok());
     assert_eq!(count.unwrap(), 6);
   }
@@ -357,28 +356,78 @@ mod pcb_tests {
     assert!(result.is_ok());
 
     //We expect the new pages to be loaded in properly
-
-
-
+    for (i, page) in created_pcb.page_table.iter().enumerate() {
+      for (j, frame) in page.index.iter().enumerate() {
+        let expected_line = format!("line{}\r\n", (((i * 3) + j) + 1));
+        let read_line = shell_memory.get_value_at(*frame);
+        match (i, j) {
+          (2, 2) => {
+            assert_eq!(read_line, None);
+            assert_eq!(page.valid_bit[j], false);
+          },
+          _ => {
+            assert_eq!(read_line, Some(expected_line));
+            assert_eq!(page.valid_bit[j], true);
+          }
+        }
+      }
+    }
   }
 
   #[test]
   fn test_load_pages_fail() {
+    let mut shell_memory = ShellMemory::new(FRAME_STORE_SIZE, VAR_STORE_SIZE);
+    let pid = 0usize;
+    let test_file_path = "examples/test3.txt".to_string();
 
+    let pcb = PCB::new(&mut shell_memory, &pid, &test_file_path);
+    assert!(pcb.is_ok());
+
+    let mut created_pcb = pcb.unwrap();
+
+    //We fill the rest of the frame store to make it impossible to allocate more frames
+    //We expect 0..5 to be filled
+    let dummy_pid = "dummyPid".to_string();
+    let dummy_value = "dummyValue".to_string();
+
+    for i in 6usize..FRAME_STORE_SIZE {
+      shell_memory.set_value_at(i, &dummy_pid, &dummy_value, &mut false);
+    }
+
+    let result = created_pcb.load_page(&mut shell_memory, 2);
+    assert!(result.is_err());
+    assert_eq!(result.unwrap_err(), NoFreePages);
   }
 
   #[test]
   fn test_evict_page() {
+    let mut shell_memory = ShellMemory::new(FRAME_STORE_SIZE, VAR_STORE_SIZE);
+    let pid = 0usize;
+    let test_file_path = "examples/test1.txt".to_string();
 
-  }
+    let pcb = PCB::new(&mut shell_memory, &pid, &test_file_path);
+    assert!(pcb.is_ok());
 
-  #[test]
-  fn test_run_process() {
+    let mut created_pcb = pcb.unwrap();
+    //Same as created PCB 1 up to now, we evict the page @ index 1
+    created_pcb.evict_page(&mut shell_memory, 1);
 
-  }
-
-  #[test]
-  fn test_increment_pc() {
-
+    for (i, page) in created_pcb.page_table.iter().enumerate() {
+      for (j, frame) in page.index.iter().enumerate() {
+        match i  {
+          0 => {
+            assert_eq!(page.index[j], j);
+            assert_eq!(page.valid_bit[j], true);
+          },
+          1 => {
+            assert_eq!(page.index[j], 1000);
+            assert_eq!(page.valid_bit[j], false);
+          },
+          _ => {
+            panic!("Out of bounds");
+          }
+        }
+      }
+    }
   }
 }
