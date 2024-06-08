@@ -7,6 +7,7 @@ pub enum ShellErrors {
   PageFault(usize),
   InitialFrameAllocationFailed,
   NoFreePages,
+  CacheError,
   IoError(String)
 }
 
@@ -18,6 +19,7 @@ impl Display for ShellErrors {
       Self::PageFault(page_index) => format!("Page fault occurred @ index: {}", page_index),
       Self::InitialFrameAllocationFailed => "Insufficient memory to allocate initial pages".parse().unwrap(),
       Self::NoFreePages => "No free pages".parse().unwrap(),
+      Self::CacheError => "LRU Cache entry could not be found".parse().unwrap(),
       Self::IoError(v) => format!("{}",v)
     };
 

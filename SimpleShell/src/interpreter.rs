@@ -9,15 +9,10 @@ pub fn parser(shell_memory: &mut ShellMemory, user_input: &mut String, cwd: &Str
     let token = token.trim();
     let arguments: Vec<_> = token.split_whitespace().map(|s|s.to_string()).collect();
     let num_of_args = arguments.len();
-
-    if let Err(e) = interpreter(shell_memory, &arguments, &num_of_args, cwd) {
-      return Err(e)
-    }
+    interpreter(shell_memory, &arguments, &num_of_args, cwd)?
   }
-
   Ok(())
 }
-
 
 pub fn interpreter(shell_memory: &mut ShellMemory, arguments: &Vec<String>, num_of_args: &usize, cwd: &String) -> Result<(), ShellErrors> {
   if *num_of_args < 1 {
@@ -26,7 +21,8 @@ pub fn interpreter(shell_memory: &mut ShellMemory, arguments: &Vec<String>, num_
 
   match arguments.first().unwrap().as_str() {
     "help" => {
-      todo!();
+      println!("Help!");
+      Ok(())
     },
     "quit" => {
       todo!();
@@ -76,14 +72,4 @@ mod interpreter_tests {
   pub const FRAME_STORE_SIZE: usize = 6;
   pub const VAR_STORE_SIZE: usize =  4;
   pub const TOTAL_SIZE: usize = FRAME_STORE_SIZE + VAR_STORE_SIZE;
-
-  #[test]
-  fn test_parse_single_line() {
-
-  }
-
-  #[test]
-  fn test_parse_multi_line() {
-
-  }
 }

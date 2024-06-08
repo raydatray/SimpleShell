@@ -129,11 +129,12 @@ impl PCB {
 
   pub fn run_process(&mut self, shell_memory: &mut ShellMemory, cwd: &String) -> Result<usize, ShellErrors> {
     if !self.page_table[self.pages_executed].valid_bit[self.frames_executed] {
-      return Err(PageFault(self.page_table[self.pages_executed].index[self.frames_executed]));
+      return Err(PageFault(self.pages_executed));
     }
     parser(shell_memory, &mut shell_memory.get_value_at(self.page_table[self.pages_executed].index[self.frames_executed]).unwrap(), cwd)?;
+    let return_value = self.pages_executed;
     self.increment_pc();
-    Ok(self.page_table[self.pages_executed].index[self.frames_executed])
+    Ok(return_value)
   }
 
   fn increment_pc(&mut self) {
