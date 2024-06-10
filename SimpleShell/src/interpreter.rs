@@ -7,7 +7,7 @@ pub fn parser(shell_memory: &mut ShellMemory, user_input: &mut String, cwd: &Str
 
   for token in tokens.iter() {
     let token = token.trim();
-    let arguments: Vec<_> = token.split_whitespace().map(|s|s.to_string()).collect();
+    let arguments: Vec<String> = token.split_whitespace().map(|s|s.to_string()).collect();
     let num_of_args = arguments.len();
     interpreter(shell_memory, &arguments, &num_of_args, cwd)?
   }
@@ -25,7 +25,7 @@ pub fn interpreter(shell_memory: &mut ShellMemory, arguments: &Vec<String>, num_
       Ok(())
     },
     "quit" => {
-      todo!();
+      std::process::exit(0);
     },
     "set" => {
       if *num_of_args < 3 {
@@ -40,27 +40,26 @@ pub fn interpreter(shell_memory: &mut ShellMemory, arguments: &Vec<String>, num_
     },
     "print" => {
       if *num_of_args != 2 {
-        println!("Error: print command must be called with two arguments")
+        println!("Error: print command must be called with at least two arguments")
       }
 
-      println!("{}", arguments[1]);
+      println!("{}", arguments[1..].join(" "));
       Ok(())
     },
     "echo" => {
       todo!()
     },
     "resetvars" => {
-      todo!()
+      shell_memory.clear_variables();
+      Ok(())
     }
     "run" => {
       todo!();
-
     },
     "exec" => {
       todo!();
     },
     _ => {
-      println!("{:?}", arguments);
       Ok(())
     }
   }
