@@ -1,9 +1,8 @@
-use std::error::Error;
 use crate::errors::ShellErrors;
 use crate::shellmemory::ShellMemory;
 
 pub fn parser(shell_memory: &mut ShellMemory, user_input: &mut String, cwd: &String) -> Result<(), ShellErrors> {
-  let tokens: Vec<&str>= user_input.split(';').collect();
+  let tokens: Vec<&str> = user_input.split(';').collect();
 
   for token in tokens.iter() {
     let token = token.trim();
@@ -47,7 +46,16 @@ pub fn interpreter(shell_memory: &mut ShellMemory, arguments: &Vec<String>, num_
       Ok(())
     },
     "echo" => {
-      todo!()
+      match arguments[1].as_str() {
+        "$" => {
+          println!("{}", shell_memory.get_var_by_key(&arguments[2]).unwrap_or(" ".to_string()));
+          Ok(())
+        },
+        _ => {
+          println!("{}", arguments[1..].join(" "));
+          Ok(())
+        }
+      }
     },
     "resetvars" => {
       shell_memory.clear_variables();
