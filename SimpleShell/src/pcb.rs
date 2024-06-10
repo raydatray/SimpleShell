@@ -69,7 +69,8 @@ impl PCB {
       for j in 0..3 {
         let mut line = String::new();
         if file_reader.read_line(&mut line)? != 0  {
-          shell_memory.set_value_at(curr_page.index[j], &pid.to_string(), &line.clone(), &mut curr_page.valid_bit[j]);
+          let trimmed_line = line.trim();
+          shell_memory.set_value_at(curr_page.index[j], &pid.to_string(), &trimmed_line.to_string(), &mut curr_page.valid_bit[j]);
           line.clear();
         } else {
           break;
@@ -107,7 +108,8 @@ impl PCB {
     for i in 0..3 {
       let mut line = String::new();
       if self.source_file.read_line(&mut line)? != 0  {
-        shell_memory.set_value_at(curr_page.index[i], &self.pid.to_string(), &line.clone(), &mut curr_page.valid_bit[i]);
+        let trimmed_line = line.trim();
+        shell_memory.set_value_at(curr_page.index[i], &self.pid.to_string(), &trimmed_line.to_string(), &mut curr_page.valid_bit[i]);
         line.clear();
       } else {
         break;

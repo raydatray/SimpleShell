@@ -1,18 +1,21 @@
-#![allow(warnings)] //Suppress warnings while devving
-
 mod shellmemory;
 mod interpreter;
 mod kernel;
 mod pcb;
 mod errors;
 
-use std::env;
+use crate::shellmemory::ShellMemory;
+use crate::kernel::Kernel;
 
 fn main() -> std::io::Result<()> {
-  let args = env::args();
+  //Temporary values until we can capture these from compile or @ runtime
+  const FRAME_STORE_SIZE: usize = 18;
+  const VAR_STORE_SIZE: usize = 10;
 
-  if args.len() < 2 {
-    return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "Error: SimpleShell must be called with the hard drive name as an argument."));
-  }
+  let mut shell_memory = ShellMemory::new(FRAME_STORE_SIZE, VAR_STORE_SIZE);
+  let mut kernel = Kernel::new();
+
+
+
   Ok(())
 }

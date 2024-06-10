@@ -60,7 +60,7 @@ pub fn interpreter(shell_memory: &mut ShellMemory, arguments: &Vec<String>, num_
       todo!();
     },
     _ => {
-      println!("Invalid command");
+      println!("{:?}", arguments);
       Ok(())
     }
   }

@@ -1,13 +1,14 @@
 use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
 use std::error::Error;
+
 use crate::errors::ShellErrors;
-use crate::errors::ShellErrors::{CacheError, PageFault};
+use crate::errors::ShellErrors::{CacheError, PageFault, NoFreePages};
 
 use crate::pcb::PCB;
 use crate::shellmemory::ShellMemory;
 
-struct Kernel {
+pub struct Kernel {
   all_pcb: HashMap<usize, RefCell<PCB>>, //The hashmap owns the PCBs in RefCells (for interior mutability) me > borrow checker
   process_queue: VecDeque<usize>, //PIDs
   lru_cache: VecDeque<(usize, usize)>, //PID, Page_index
@@ -47,39 +48,56 @@ impl Kernel {
       Ok(page_index) => {
         let target_entry = (*pid, page_index);
 
-        match self.lru_cache.iter().position(|lru_entry|  { *lru_entry ==  target_entry }) {
+        return match self.lru_cache.iter().position(|lru_entry|  { *lru_entry ==  target_entry }) {
           Some(i)  => {
             let lru_entry = self.lru_cache.remove(i).unwrap();
             self.lru_cache.push_front(lru_entry);
-            return Ok(());
+            Ok(())
           },
           None => {
-            return Err(CacheError); //This should never happen
+            Err(CacheError) //This should never happen
           }
         }
       },
       Err(e) => { //If we page fault
         match e {
           PageFault(page_index) => {
-            if let Err(_) = pcb.load_page(shell_memory, page_index) { //If we need  to evict LRU
+            if let Err(NoFreePages) = pcb.load_page(shell_memory, page_index) { //If we need  to evict LRU
               let victim_page = self.lru_cache.pop_back().unwrap(); //Get LRU page
-              self.all_pcb.get(&victim_page.0).unwrap().borrow_mut().evict_page(shell_memory, victim_page.1); //Evict that page
-              pcb.load_page(shell_memory, victim_page.1)? //Load page @ evicted page location
+
+              if victim_page.0 == *pid {
+                pcb.evict_page(shell_memory, victim_page.1);
+              } else {
+                self.all_pcb.get(&victim_page.0).unwrap().borrow_mut().evict_page(shell_memory, victim_page.1); //Evict that page
+              }
+
+              pcb.load_page(shell_memory, page_index).unwrap(); //Load page @ evicted page location
+              return Err(e)
             }
             self.lru_cache.push_front((*pid, page_index)); //Place page into LRU
             self.process_queue.push_back(*pid); //Place process back of queue
-            return Err(e);
+            Err(e)
           },
-          _ => return Err(*Box::try_from(e).unwrap())
+          _ => Err(*Box::try_from(e).unwrap())
         }
       }
     }
   }
 
-  pub fn run_process_fifo(&mut self, shell_memory: &mut ShellMemory, cwd: &String) -> Result<(), Box<dyn Error>> {
+  pub fn run_process_fifo(&mut self, shell_memory: &mut ShellMemory, cwd: &String) -> Result<(), ShellErrors> {
     while !self.queue_done(){
       let pid = self.process_queue.pop_front().unwrap();
-      self.run_process(shell_memory, &pid, cwd)?;
+      while !self.all_pcb.get(&pid).unwrap().borrow().pcb_complete() {
+        //Any type of error other than PageFault should be propagated
+        match self.run_process(shell_memory, &pid, cwd) {
+          Ok(()) | Err(PageFault(_)) => {
+            continue;
+          },
+          Err(e) => {
+            return Err(e);
+          }
+        }
+      }
     }
     Ok(())
   }
@@ -91,7 +109,6 @@ impl Kernel {
 
 #[cfg(test)]
 mod kernel_tests {
-  use std::fmt::Debug;
   use super::*;
   pub const FRAME_STORE_SIZE: usize = 18; //3 files, 2 pages, 3 line each = 18 frame store at a minimum
   pub const VAR_STORE_SIZE: usize =  4;
@@ -238,5 +255,51 @@ mod kernel_tests {
     //We add one process and run it
     let result = kernel.add_new_process(&mut shell_memory, &TEST_FILE_3.to_string());
     assert!(result.is_ok());
+
+    //We expect LRU to be (1,1), (1,0) in its init state
+    //1,0 - 1,1 -> 1,1 - 1,0. We evict 1,0 and expect 1,2 - 1,1
+
+    for i in 0usize..9 {
+      let result = kernel.run_process(&mut shell_memory, &1, &dummy_cwd);
+      match i {
+        0..=5  => {
+          assert!(result.is_ok());
+
+          let expected_lru = (1usize, i / 3usize);
+          let lru = kernel.lru_cache.front();
+
+          assert!(lru.is_some());
+          assert_eq!(lru, Some(&expected_lru));
+        },
+        6 => {
+          assert!(result.is_err());
+          assert_eq!(result.unwrap_err(), PageFault(2));
+
+
+        }
+        7..=8 => {
+
+        },
+        _ => {
+          panic!("Out of bounds");
+        }
+      }
+    }
+  }
+
+  //Check the output on this test manually (we can't capture stdout yet)
+  #[test]
+  fn test_fifo() {
+    let script_paths = vec![TEST_FILE_1, TEST_FILE_2, TEST_FILE_3];
+    let mut shell_memory = ShellMemory::new(FRAME_STORE_SIZE, VAR_STORE_SIZE);
+    let mut kernel = Kernel::new();
+
+    let dummy_cwd = "dummyCwd".to_string();
+
+    script_paths.iter().for_each(|script_path| {
+      kernel.add_new_process(&mut shell_memory, &script_path.to_string()).unwrap()
+    });
+
+    let result = kernel.run_process_fifo(&mut shell_memory, &dummy_cwd);
   }
 }
