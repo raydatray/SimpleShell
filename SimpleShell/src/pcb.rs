@@ -4,6 +4,7 @@ use std::io::{BufRead, BufReader, Seek};
 
 use crate::interpreter::parser;
 use crate::shellmemory::ShellMemory;
+use crate::kernel::Kernel;
 use crate::errors::ShellErrors;
 use crate::errors::ShellErrors::PageFault;
 
@@ -133,7 +134,7 @@ impl PCB {
     if !self.page_table[self.pages_executed].valid_bit[self.frames_executed] {
       return Err(PageFault(self.pages_executed));
     }
-    parser(shell_memory, &mut shell_memory.get_value_at(self.page_table[self.pages_executed].index[self.frames_executed]).unwrap(), cwd)?;
+    parser(None, shell_memory, &mut shell_memory.get_value_at(self.page_table[self.pages_executed].index[self.frames_executed]).unwrap(), cwd)?;
     let return_value = self.pages_executed;
     self.increment_pc();
     Ok(return_value)
@@ -205,7 +206,7 @@ mod pcb_tests {
   fn test_create_pcb_1() {
     let mut shell_memory = ShellMemory::new(FRAME_STORE_SIZE, VAR_STORE_SIZE);
     let pid = 0usize;
-    let test_file_path = "examples/test1.txt".to_string();
+    let test_file_path = "testfiles/test1.txt".to_string();
 
     let pcb = PCB::new(&mut shell_memory, &pid, &test_file_path);
     assert!(pcb.is_ok());
@@ -224,7 +225,7 @@ mod pcb_tests {
     for (i, page) in created_pcb.page_table.iter().enumerate() {
       for (j, frame) in page.index.iter().enumerate()  {
         let frame_line = shell_memory.get_value_at(*frame);
-        let expected_line = format!("line{}\r\n", (((i * 3) + j) + 1));
+        let expected_line = format!("line{}", (((i * 3) + j) + 1));
 
         assert_eq!(frame_line, Some(expected_line));
         assert_eq!(page.valid_bit[j], true);
@@ -238,7 +239,7 @@ mod pcb_tests {
   fn test_create_pcb_2() {
     let mut shell_memory = ShellMemory::new(FRAME_STORE_SIZE, VAR_STORE_SIZE);
     let pid = 0usize;
-    let test_file_path = "examples/test2.txt".to_string();
+    let test_file_path = "testfiles/test2.txt".to_string();
 
     let pcb = PCB::new(&mut shell_memory, &pid, &test_file_path);
     assert!(pcb.is_ok());
@@ -258,7 +259,7 @@ mod pcb_tests {
       let frame_line = shell_memory.get_value_at(*j);
       match j {
         0 | 1 => {
-          let expected_line = format!("line{}\r\n", (j + 1));
+          let expected_line = format!("line{}", (j + 1));
           assert_eq!(frame_line, Some(expected_line));
           assert_eq!(created_pcb.page_table[0].valid_bit[*j], true)
         },
@@ -276,7 +277,7 @@ mod pcb_tests {
   fn test_create_pcb_3() {
     let mut shell_memory = ShellMemory::new(FRAME_STORE_SIZE, VAR_STORE_SIZE);
     let pid = 0usize;
-    let test_file_path = "examples/test3.txt".to_string();
+    let test_file_path = "testfiles/test3.txt".to_string();
 
     let pcb = PCB::new(&mut shell_memory, &pid, &test_file_path);
     assert!(pcb.is_ok());
@@ -297,7 +298,7 @@ mod pcb_tests {
         match i {
           0..=1 => {
             let frame_line = shell_memory.get_value_at(*frame);
-            let expected_line = format!("line{}\r\n", (((i * 3) + j) + 1));
+            let expected_line = format!("line{}", (((i * 3) + j) + 1));
             assert_eq!(frame_line, Some(expected_line));
             assert_eq!(page.valid_bit[j], true);
           },
@@ -325,7 +326,7 @@ mod pcb_tests {
     }
 
     let pid = 0usize;
-    let test_file_path = "examples/test1.txt".to_string();
+    let test_file_path = "testfiles/test1.txt".to_string();
 
     let pcb = PCB::new(&mut shell_memory, &pid, &test_file_path);
     assert!(pcb.is_err());
@@ -334,7 +335,7 @@ mod pcb_tests {
 
   #[test]
   fn test_count_lines() {
-    let test_file_path = "examples/test1.txt".to_string();
+    let test_file_path = "testfiles/test1.txt".to_string();
     let mut test_file = BufReader::new(File::open(test_file_path).unwrap());
 
     let count = PCB::count_lines(&mut test_file);
@@ -346,7 +347,7 @@ mod pcb_tests {
   fn test_load_pages_success() {
     let mut shell_memory = ShellMemory::new(FRAME_STORE_SIZE, VAR_STORE_SIZE);
     let pid = 0usize;
-    let test_file_path = "examples/test3.txt".to_string();
+    let test_file_path = "testfiles/test3.txt".to_string();
 
     let pcb = PCB::new(&mut shell_memory, &pid, &test_file_path);
     assert!(pcb.is_ok());
@@ -361,7 +362,7 @@ mod pcb_tests {
     //We expect the new pages to be loaded in properly
     for (i, page) in created_pcb.page_table.iter().enumerate() {
       for (j, frame) in page.index.iter().enumerate() {
-        let expected_line = format!("line{}\r\n", (((i * 3) + j) + 1));
+        let expected_line = format!("line{}", (((i * 3) + j) + 1));
         let read_line = shell_memory.get_value_at(*frame);
         match (i, j) {
           (2, 2) => {
@@ -381,7 +382,7 @@ mod pcb_tests {
   fn test_load_pages_fail() {
     let mut shell_memory = ShellMemory::new(FRAME_STORE_SIZE, VAR_STORE_SIZE);
     let pid = 0usize;
-    let test_file_path = "examples/test3.txt".to_string();
+    let test_file_path = "testfiles/test3.txt".to_string();
 
     let pcb = PCB::new(&mut shell_memory, &pid, &test_file_path);
     assert!(pcb.is_ok());
@@ -406,7 +407,7 @@ mod pcb_tests {
   fn test_evict_page() {
     let mut shell_memory = ShellMemory::new(FRAME_STORE_SIZE, VAR_STORE_SIZE);
     let pid = 0usize;
-    let test_file_path = "examples/test1.txt".to_string();
+    let test_file_path = "testfiles/test1.txt".to_string();
 
     let pcb = PCB::new(&mut shell_memory, &pid, &test_file_path);
     assert!(pcb.is_ok());

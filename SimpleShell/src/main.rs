@@ -26,7 +26,7 @@ fn main() -> Result<(), ShellErrors> {
     print!("$ ");
     io::stdout().flush().expect("TODO: panic message");
     io::stdin().read_line(&mut buffer).expect("TODO: panic message");
-    parser(&mut shell_memory, &mut buffer, &dummy_cwd)?;
+    parser(Some(&mut kernel), &mut shell_memory, &mut buffer, &dummy_cwd)?;
     buffer.clear();
   }
 }

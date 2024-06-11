@@ -113,9 +113,9 @@ mod kernel_tests {
   pub const FRAME_STORE_SIZE: usize = 18; //3 files, 2 pages, 3 line each = 18 frame store at a minimum
   pub const VAR_STORE_SIZE: usize =  4;
   pub const TOTAL_SIZE: usize = FRAME_STORE_SIZE + VAR_STORE_SIZE;
-  pub const TEST_FILE_1: &str = "examples/test1.txt";
-  pub const TEST_FILE_2: &str = "examples/test2.txt";
-  pub const TEST_FILE_3: &str = "examples/test3.txt";
+  pub const TEST_FILE_1: &str = "testfiles/test1.txt";
+  pub const TEST_FILE_2: &str = "testfiles/test2.txt";
+  pub const TEST_FILE_3: &str = "testfiles/test3.txt";
 
   #[test]
   fn test_create_and_add() {
