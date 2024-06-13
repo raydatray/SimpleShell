@@ -27,4 +27,4 @@ I aim to:
 - Write "idiomatic" Rust code
 
 # Version Log
-- V1.0: Feature parity reached with A2 of the original C version. See the commit [here](https://github.com/raydatray/SimpleShell/commit/5e8b36c34539523b97ff9994600b354adef52331)
+- V1.0: Feature parity reached with A2 of the original C version. See the commit [here](https://github.com/raydatray/SimpleShell/commit/5e8b36c34539523b97ff9994600b354adef52331). Read the dev notes [here](SimpleShell/V1.md)
