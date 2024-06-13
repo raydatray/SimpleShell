@@ -26,5 +26,5 @@ I aim to:
 - Properly handle errors using Rust's result type
 - Write "idiomatic" Rust code
 
-## Some Notes
-
+# Version Log
+- V1.0: Feature parity reached with A2 of the original C version. See the commit [here](https://github.com/raydatray/SimpleShell/commit/5e8b36c34539523b97ff9994600b354adef52331)
