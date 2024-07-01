@@ -73,7 +73,7 @@ pub fn interpreter(shell_memory: &mut ShellMemory, arguments: &Vec<String>, num_
       Ok(())
     },
     "print" => {
-      if num_of_args != 2 {
+      if num_of_args < 2 {
         println!("Error: print command must be called with at least two arguments")
       }
 
