@@ -3,6 +3,7 @@ mod interpreter;
 mod kernel;
 mod pcb;
 mod errors;
+mod fs;
 
 use std::io;
 use std::io::Write;
@@ -10,6 +11,7 @@ use crate::errors::ShellErrors;
 use crate::interpreter::parser;
 use crate::shellmemory::ShellMemory;
 use crate::kernel::Kernel;
+
 
 fn main() -> Result<(), ShellErrors> {
   //Temporary values until we can capture these from compile or @ runtime
