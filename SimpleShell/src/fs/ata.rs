@@ -38,26 +38,15 @@ impl Controller {
 
 impl AtaDisk {
   fn identify_and_register_ata_device(&self) -> Result<(), FsErrors> {
-    if !self.is_ata {
-      return Err(FsErrors::NotATADevice);
-    }
-
-    let metadata = std::fs::metadata(self.file_path)?;
-    let capacity = metadata.size() / BLOCK_SECTOR_SIZE as u64;
-
-
-
-
-    let read =
-    Ok(())
+    todo!();
   }
 
-  pub fn ada_disk_read(&self, sector_num: BlockSectorT, buffer: &mut Vec<u8>) -> Result<(), FsErrors> {
+  pub fn ata_disk_read(&self, sector_num: BlockSectorT, buffer: &mut Vec<u8>) -> Result<(), FsErrors> {
     self.file_descriptor.read_exact_at(buffer, (sector_num * BLOCK_SECTOR_SIZE as u32) as u64)?;
     Ok(())
   }
 
-  pub fn ada_disk_write(&self, sector_num: BlockSectorT, buffer: &Vec<u8>) -> Result<(), FsErrors> {
+  pub fn ata_disk_write(&self, sector_num: BlockSectorT, buffer: &Vec<u8>) -> Result<(), FsErrors> {
     self.file_descriptor.write_all_at(buffer, (sector_num * BLOCK_SECTOR_SIZE as u32) as u64)?;
     Ok(())
   }
