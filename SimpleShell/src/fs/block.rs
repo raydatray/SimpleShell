@@ -12,6 +12,7 @@ struct HardwareOperations<'a> {
 impl<'a> HardwareOperations<'a> {
   fn new(disk: &'a AtaDisk) -> HardwareOperations<'a> {
     HardwareOperations {
+      //We "capture" &disk to "prebind" it to our function calls
       hardware_read: Box::new(move |sector_num, buffer: &mut Vec<u8>| disk.ata_disk_read(sector_num, buffer)),
       hardware_write: Box::new(move |sector_num, buffer: &Vec<u8>| disk.ata_disk_write(sector_num, buffer))
     }
