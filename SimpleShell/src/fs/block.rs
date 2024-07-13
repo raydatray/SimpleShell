@@ -1,16 +1,19 @@
+use std::cell::Cell;
+use std::rc::Weak;
+
 use crate::fs::fs_errors::FsErrors;
 use crate::fs::ata::AtaDisk;
 
 pub const BLOCK_SECTOR_SIZE: u16 = 512u16;
 pub type BlockSectorT = u32;
 
-struct HardwareOperations<'a> {
+pub struct HardwareOperations<'a> {
   hardware_read: Box<dyn Fn(BlockSectorT, &mut Vec<u8>) -> Result<(), FsErrors> + 'a>,
   hardware_write: Box<dyn Fn(BlockSectorT, &Vec<u8>) -> Result<(), FsErrors> + 'a>
 }
 
 impl<'a> HardwareOperations<'a> {
-  fn new(disk: &'a AtaDisk) -> HardwareOperations<'a> {
+  pub fn new(disk: &'a AtaDisk) -> HardwareOperations<'a> {
     HardwareOperations {
       //We "capture" &disk to "prebind" it to our function calls
       hardware_read: Box::new(move |sector_num, buffer: &mut Vec<u8>| disk.ata_disk_read(sector_num, buffer)),
@@ -31,20 +34,21 @@ pub struct Block<'a> {
   name: String,
   file_name : String,
   size : BlockSectorT,
-  write_count : u64,
-  read_count : u64,
-  hardware_ops: HardwareOperations<'a>
-  //todo: aux data?
+  write_count : Cell<u64>, //Allows all block methods to &self
+  read_count : Cell<u64>,
+  hardware_ops: HardwareOperations<'a>,
+  //todo: aux data as reference (either partition or ata disk)
+  //Can't use weak unless we use RC-allocated(dont want to!!)
 }
 
 impl<'a> Block<'a> {
-  fn new(name: String, file_name: String, size: BlockSectorT, hardware_ops: HardwareOperations<'a>) -> Block<'a> {
+  pub fn new(name: String, file_name: String, size: BlockSectorT, hardware_ops: HardwareOperations<'a>) -> Block<'a> {
     Block {
       name,
       file_name,
       size,
-      write_count: 0u64,
-      read_count: 0u64,
+      write_count: Cell::new(0u64),
+      read_count: Cell::new(0u64),
       hardware_ops
     }
   }
@@ -55,17 +59,23 @@ impl<'a> Block<'a> {
     Ok(())
   }
 
-  fn read_block_to_buffer(&mut self, sector: BlockSectorT, buffer: &mut Vec<u8>) -> Result<(), FsErrors> {
+  pub fn read_block_to_buffer(&self, sector: BlockSectorT, buffer: &mut Vec<u8>) -> Result<(), FsErrors> {
     self.check_sector(sector)?;
     self.hardware_ops.read_block_to_buffer(sector, buffer)?;
-    self.read_count += 1;
+
+    let current_read_count = self.read_count.get();
+    self.read_count.set(current_read_count + 1);
+
     Ok(())
   }
 
-  fn write_buffer_to_block(&mut self, sector: BlockSectorT, buffer: &Vec<u8>) -> Result<(), FsErrors> {
+  pub fn write_buffer_to_block(&self, sector: BlockSectorT, buffer: &Vec<u8>) -> Result<(), FsErrors> {
     self.check_sector(sector)?;
     self.hardware_ops.write_buffer_to_block(sector, buffer)?;
-    self.write_count += 1;
+
+    let current_write_count = self.write_count.get();
+    self.write_count.set(current_write_count + 1);
+
     Ok(())
   }
 

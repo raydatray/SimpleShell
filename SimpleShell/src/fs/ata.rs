@@ -1,9 +1,9 @@
-use std::{fs::{File, Metadata}, io::Write, os::unix::fs::{FileExt, MetadataExt}, rc::{Rc, Weak}};
+use std::{fs::{metadata, File, Metadata}, io::Write, os::{macos::fs::MetadataExt, unix::fs::{FileExt, MetadataExt}}, rc::{Rc, Weak}};
 
-use super::{block::{BlockSectorT, BLOCK_SECTOR_SIZE}, fs_errors::FsErrors};
+use super::{block::{Block, BlockSectorT, HardwareOperations, BLOCK_SECTOR_SIZE}, fs_errors::FsErrors};
 
-const CHANNEL_COUNT: u8 = 2;
-const DEVICE_COUNT: u8 = 2;
+const CHANNEL_COUNT: u8 = 2u8;
+const DEVICE_COUNT: u8 = 2u8;
 
 //Top level controller, where we support two "legacy" ATA channels
 struct Controller {
@@ -38,7 +38,18 @@ impl Controller {
 
 impl AtaDisk {
   fn identify_and_register_ata_device(&self) -> Result<(), FsErrors> {
-    todo!();
+    if !self.is_ata {
+      todo!();
+    }
+
+    let meta = metadata(self.file_path)?;
+    let capacity = meta.st_size() / BLOCK_SECTOR_SIZE as u64;
+    let block_operations = HardwareOperations::new(&self);
+
+    let block = Block::new(self.name, self.file_path, capacity as BlockSectorT, hardware_ops);
+    //partition scan
+
+
   }
 
   pub fn ata_disk_read(&self, sector_num: BlockSectorT, buffer: &mut Vec<u8>) -> Result<(), FsErrors> {
