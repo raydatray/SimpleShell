@@ -56,7 +56,7 @@ impl<'a> Partition<'a> {
 }
 
 impl PartitionTable {
-  fn read_partition_table(block: &Block, sector: BlockSectorT, primary_extended_sector: BlockSectorT, part_nr: usize, fname: String) -> Result<(), FsErrors> {
+  fn read_partition_table(block: Block, sector: BlockSectorT, primary_extended_sector: BlockSectorT, mut part_nr: usize, fname: String) -> Result<(), FsErrors> {
     if sector >= block.get_block_size() {
       return Err(FsErrors::SectorOutOfBounds(sector));
     }
@@ -73,18 +73,20 @@ impl PartitionTable {
 
     if partition_table.signature != 0xAA55 {
       if primary_extended_sector == 0 {
-        todo!("Implement invalid parition signature error");
+        return Err(FsErrors::InvalidPartitionTableSignature(block.get_block_name()))
       } else {
-        todo!("Implement invalid ext partition table");
+        return Err(FsErrors::InvalidExtendedPartitionTable(block.get_block_name(), sector))
       }
     }
 
-    for entry in partition_table.partitions.iter() {
+    let partition_table_entries = partition_table.partitions; //We need to copy to a local variable due to packed Struct
+
+    for entry in partition_table_entries.iter() {
       match (entry.num_of_sectors, entry.partition_type) {
         (0, _) | (_, 0) => {
-          todo!("Immediately return (ignore)")
+          return Ok(())
         },
-        (_, 0x05) | (_, 0x0f) | (0, 0x85) | (0, 0xc5) => {
+        (_, 0x05) | (_, 0x0f) | (_, 0x85) | (_, 0xc5) => {
           format!("{}: Extended partition in sector: {}", block.get_block_name(), sector);
           if sector == 0 {
             return PartitionTable::read_partition_table(block, entry.offset, entry.offset, part_nr, fname)
@@ -95,12 +97,10 @@ impl PartitionTable {
         _ => {
           part_nr += 1;
 
+          return Partition::register_partition(block, entry.partition_type, entry.offset + sector, entry.num_of_sectors, part_nr, fname)
         }
       }
     }
-
-
-
     Ok(())
   }
 }

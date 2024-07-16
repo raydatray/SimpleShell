@@ -1,5 +1,4 @@
 use std::cell::Cell;
-use std::rc::Weak;
 
 use crate::fs::fs_errors::FsErrors;
 use crate::fs::ata::AtaDisk;
@@ -37,7 +36,7 @@ pub struct Block<'a> {
   write_count : Cell<u64>, //Allows all block methods to &self
   read_count : Cell<u64>,
   hardware_ops: HardwareOperations<'a>,
-  //todo: aux data as reference (either partition or ata disk)
+  //todo: aux data as referencE (Either partition or ata disk)
   //Can't use weak unless we use RC-allocated(dont want to!!)
 }
 
