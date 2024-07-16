@@ -1,4 +1,4 @@
-use std::mem;
+use std::{fs::File, mem, os::unix::fs::FileExt};
 
 type ElementType = u32;
 const ELEMENT_BITS: usize = mem::size_of::<ElementType>() * u8::BITS as usize; //How many bits in ElemType
@@ -53,4 +53,15 @@ impl Bitmap {
 
 
 
+  fn bitmap_file_size(&self) -> usize {
+    byte_cnt(self.bit_cnt)
+  }
+
+  pub fn read_bitmap_from_file(&mut self,) {
+    if self.bit_cnt > 0 {
+      let size = byte_cnt(self.bit_cnt);
+
+
+    }
+  }
 }

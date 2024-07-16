@@ -104,3 +104,5 @@ impl PartitionTable {
     Ok(())
   }
 }
+
+pub fn partition_scan(starting_block: Block, )
