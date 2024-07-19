@@ -22,11 +22,13 @@ pub fn element_cnt(bit_cnt: usize) -> usize {
 }
 
 #[inline]
+//Returns the number of bytes required for bit_cnt bits
 pub fn byte_cnt(bit_cnt: usize) -> usize {
   mem::size_of::<ElementType>() * element_cnt(bit_cnt)
 }
 
 #[inline]
+//Returns a bit mask where the actually used in the lsat element of B's bits are set to 1 and rest are 0
 pub fn last_mask(bitmap: &Bitmap) -> ElementType {
   let last_bits = bitmap.bit_cnt % ELEMENT_BITS;
   return match last_bits {

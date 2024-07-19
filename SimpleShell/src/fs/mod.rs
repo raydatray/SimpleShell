@@ -4,3 +4,5 @@ mod ata;
 mod partition;
 mod bitmap;
 mod cache;
+mod file;
+mod inode;

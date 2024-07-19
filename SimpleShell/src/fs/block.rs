@@ -7,24 +7,24 @@ pub const BLOCK_SECTOR_SIZE: u16 = 512u16;
 pub type BlockSectorT = u32;
 
 pub struct HardwareOperations<'a> {
-  hardware_read: Box<dyn Fn(BlockSectorT, &mut Vec<u8>) -> Result<(), FsErrors> + 'a>,
-  hardware_write: Box<dyn Fn(BlockSectorT, &Vec<u8>) -> Result<(), FsErrors> + 'a>
+  hardware_read: Box<dyn Fn(BlockSectorT, &mut [u8]) -> Result<(), FsErrors> + 'a>,
+  hardware_write: Box<dyn Fn(BlockSectorT, &[u8]) -> Result<(), FsErrors> + 'a>
 }
 
 impl<'a> HardwareOperations<'a> {
   pub fn new(disk: &'a AtaDisk) -> HardwareOperations<'a> {
     HardwareOperations {
       //We "capture" &disk to "prebind" it to our function calls
-      hardware_read: Box::new(move |sector_num, buffer: &mut Vec<u8>| disk.ata_disk_read(sector_num, buffer)),
-      hardware_write: Box::new(move |sector_num, buffer: &Vec<u8>| disk.ata_disk_write(sector_num, buffer))
+      hardware_read: Box::new(move |sector_num, buffer: &mut [u8]| disk.ata_disk_read(sector_num, buffer)),
+      hardware_write: Box::new(move |sector_num, buffer: &[u8]| disk.ata_disk_write(sector_num, buffer))
     }
   }
 
-  pub fn read_block_to_buffer(&self, sector: BlockSectorT, buffer: &mut Vec<u8>) -> Result<(), FsErrors> {
+  pub fn read_block_to_buffer(&self, sector: BlockSectorT, buffer: &mut [u8]) -> Result<(), FsErrors> {
     (self.hardware_read)(sector, buffer)
   }
 
-  pub fn write_buffer_to_block(&self, sector: BlockSectorT, buffer: &Vec<u8>) -> Result<(), FsErrors> {
+  pub fn write_buffer_to_block(&self, sector: BlockSectorT, buffer: &[u8]) -> Result<(), FsErrors> {
     (self.hardware_write)(sector, buffer)
   }
 }
@@ -58,7 +58,7 @@ impl<'a> Block<'a> {
     Ok(())
   }
 
-  pub fn read_block_to_buffer(&self, sector: BlockSectorT, buffer: &mut Vec<u8>) -> Result<(), FsErrors> {
+  pub fn read_block_to_buffer(&self, sector: BlockSectorT, buffer: &mut [u8]) -> Result<(), FsErrors> {
     self.check_sector(sector)?;
     self.hardware_ops.read_block_to_buffer(sector, buffer)?;
 
@@ -68,7 +68,7 @@ impl<'a> Block<'a> {
     Ok(())
   }
 
-  pub fn write_buffer_to_block(&self, sector: BlockSectorT, buffer: &Vec<u8>) -> Result<(), FsErrors> {
+  pub fn write_buffer_to_block(&self, sector: BlockSectorT, buffer: &[u8]) -> Result<(), FsErrors> {
     self.check_sector(sector)?;
     self.hardware_ops.write_buffer_to_block(sector, buffer)?;
 

@@ -1,13 +1,14 @@
-use crate::fs::block::Block;
+use std::array::from_fn;
 
+use crate::fs::block::Block;
 use super::{block::{BlockSectorT, BLOCK_SECTOR_SIZE}, fs_errors::FsErrors};
 
-const CACHE_SIZE: u8 = 64u8;
+const CACHE_SIZE: usize = 64usize;
 
 struct CacheEntry {
   occupied: bool,
   disk_sector: Option<BlockSectorT>,
-  buffer: Vec<u8>,
+  buffer: [u8; BLOCK_SECTOR_SIZE as usize],
   dirty: bool,
   access: bool
 }
@@ -17,7 +18,7 @@ impl CacheEntry {
     CacheEntry {
       occupied: false,
       disk_sector: None,
-      buffer: Vec::with_capacity(BLOCK_SECTOR_SIZE as usize),
+      buffer: [0; BLOCK_SECTOR_SIZE as usize],
       dirty: false,
       access: false
     }
@@ -36,15 +37,15 @@ impl CacheEntry {
   }
 }
 
-struct Cache {
-  cache: Vec<CacheEntry>,
+pub struct Cache {
+  cache: [CacheEntry; CACHE_SIZE],
   clock: usize
 }
 
 impl Cache {
   pub fn new() -> Cache {
     Cache {
-      cache: (0..CACHE_SIZE).map(|_| CacheEntry::new()).collect(),
+      cache: from_fn::<_, CACHE_SIZE, _>(|_| CacheEntry::new()),
       clock: 0
     }
   }
@@ -99,7 +100,7 @@ impl Cache {
   }
 
   //Read a cache entry into memory
-  pub fn read_cache_to_memory(&mut self, block: &Block, sector: BlockSectorT, buffer: &mut Vec<u8>) -> Result<(), FsErrors> {
+  pub fn read_cache_to_buffer(&mut self, block: &Block, sector: BlockSectorT, buffer: &mut [u8]) -> Result<(), FsErrors> {
     let slot = self.cache_lookup(sector);
     let entry: &mut CacheEntry;
 
@@ -120,7 +121,7 @@ impl Cache {
   }
 
   //Write a cache entry from memory
-  pub fn write_cache_to_buffer(&mut self, block: &Block, sector: BlockSectorT, buffer: &Vec<u8>) -> Result<(), FsErrors> {
+  pub fn write_cache_from_buffer(&mut self, block: &Block, sector: BlockSectorT, buffer: &[u8]) -> Result<(), FsErrors> {
     let slot = self.cache_lookup(sector);
     let entry: &mut CacheEntry;
 
@@ -137,7 +138,7 @@ impl Cache {
 
     entry.access = true;
     entry.dirty = true;
-    entry.buffer.copy_from_slice(buffer.as_slice());
+    entry.buffer.copy_from_slice(buffer);
     Ok(())
   }
 }

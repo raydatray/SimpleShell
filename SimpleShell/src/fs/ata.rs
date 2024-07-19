@@ -52,12 +52,12 @@ impl AtaDisk {
 
   }
 
-  pub fn ata_disk_read(&self, sector_num: BlockSectorT, buffer: &mut Vec<u8>) -> Result<(), FsErrors> {
+  pub fn ata_disk_read(&self, sector_num: BlockSectorT, buffer: &mut [u8]) -> Result<(), FsErrors> {
     self.file_descriptor.read_exact_at(buffer, (sector_num * BLOCK_SECTOR_SIZE as u32) as u64)?;
     Ok(())
   }
 
-  pub fn ata_disk_write(&self, sector_num: BlockSectorT, buffer: &Vec<u8>) -> Result<(), FsErrors> {
+  pub fn ata_disk_write(&self, sector_num: BlockSectorT, buffer: &[u8]) -> Result<(), FsErrors> {
     self.file_descriptor.write_all_at(buffer, (sector_num * BLOCK_SECTOR_SIZE as u32) as u64)?;
     Ok(())
   }
