@@ -133,7 +133,7 @@ impl Cache {
       entry.dirty = false;
       block.read_block_to_buffer(sector, &mut entry.buffer)?;
     } else {
-      entry =slot.unwrap();
+      entry = slot.unwrap();
     }
 
     entry.access = true;

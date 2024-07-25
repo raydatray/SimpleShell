@@ -3,7 +3,7 @@ use std::cell::Cell;
 use crate::fs::fs_errors::FsErrors;
 use crate::fs::ata::AtaDisk;
 
-pub const BLOCK_SECTOR_SIZE: u16 = 512u16;
+pub const BLOCK_SECTOR_SIZE: u32 = 512u32;
 pub type BlockSectorT = u32;
 
 pub struct HardwareOperations<'a> {
