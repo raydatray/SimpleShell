@@ -1,4 +1,5 @@
-use std::{fs::File, intrinsics::size_of, mem, os::unix::fs::FileExt};
+use std::mem;
+use super::fs_errors::FsErrors;
 
 type ElementType = u32;
 const ELEMENT_BITS: u32 = (mem::size_of::<ElementType>() * u8::BITS as usize) as u32; //How many bits in ElemType
@@ -42,7 +43,7 @@ fn bitmap_byte_size(bit_cnt: u32) -> u32 {
   mem::size_of::<Bitmap>() as u32 + byte_cnt(bit_cnt)
 }
 
-struct Bitmap {
+pub struct Bitmap {
   bit_cnt: u32, //size_t is type alias for long, 32 bits
   bits: Vec<ElementType>
 }
@@ -87,7 +88,7 @@ impl Bitmap {
     &self.bits
   }
 
-  pub fn set_bitmap(&mut self, index: u32, value: bool) -> () {
+  pub fn set_bitmap(&mut self, index: u32, value: bool) {
     assert!(index < self.bit_cnt);
 
     return match value {
@@ -100,17 +101,96 @@ impl Bitmap {
     }
   }
 
-  fn bitmap_mark(&mut self, bit_idx: u32) -> () {
+  fn bitmap_mark(&mut self, bit_idx: u32) {
     let idx = element_idx(bit_idx);
     let mask = bit_mask(bit_idx);
 
     self.bits[idx as usize] |= mask;
   }
 
-  fn bitmap_reset(&mut self, bit_idx: u32) -> () {
+  fn bitmap_reset(&mut self, bit_idx: u32) {
     let idx = element_idx(bit_idx);
     let mask = bit_mask(bit_idx);
 
     self.bits[idx as usize] &= !mask;
+  }
+
+  fn bitmap_flip(&mut self, bit_idx: u32) {
+    let idx = element_idx(bit_idx);
+    let mask = bit_mask(bit_idx);
+
+    self.bits[idx as usize] ^= mask;
+  }
+
+  fn bitmap_test(&self, idx: u32) -> bool {
+    assert!(idx < self.bit_cnt);
+    (self.bits[element_idx(idx) as usize] & bit_mask(idx)) != 0
+  }
+
+  fn set_all_bitmap(&mut self, val: bool) {
+    self.set_multiple_bitmap(0, self.get_bitmap_size(), val)
+  }
+
+  fn set_multiple_bitmap(&mut self, start: u32, cnt: u32, val: bool) {
+    assert!(start <= self.bit_cnt);
+    assert!(start + cnt <= self.bit_cnt);
+
+    (start..start + cnt).map(|i| self.set_bitmap(start + i, val));
+  }
+
+  fn bitmap_cnt(&self, start: u32, cnt: u32, val: bool) -> u32 {
+    assert!(start <= self.bit_cnt);
+    assert!(start + cnt <= self.bit_cnt);
+
+    (start..start + cnt).fold(0, |acc, i| if self.bitmap_test(i) == val { acc + 1 } else { acc })
+  }
+
+  fn bitmap_contains(&self, start: u32, cnt: u32, val: bool) -> bool {
+    assert!(start <= self.bit_cnt);
+    assert!(start + cnt <= self.bit_cnt);
+
+    (start..start + cnt).any(|i| self.bitmap_test(i) == val)
+  }
+
+  fn bitmap_any(&self, start: u32, cnt: u32) -> bool {
+    self.bitmap_contains(start, cnt, true)
+  }
+
+  fn bitmap_none(&self, start: u32, cnt: u32) -> bool {
+    !self.bitmap_contains(start, cnt, true)
+  }
+
+  fn bitmap_all(&self, start: u32, cnt: u32) -> bool {
+    !self.bitmap_contains(start, cnt, false)
+  }
+
+  fn bitmap_scan(&self, start: u32, cnt: u32, val: bool) -> Result<u32, FsErrors> {
+    assert!(start <= self.bit_cnt);
+
+    if cnt > self.bit_cnt {
+      todo!("Error: not enough bits");
+    }
+
+    let last = self.bit_cnt - cnt;
+    (start..=last).find(|i| !self.bitmap_contains(*i, cnt, !val)).ok_or(todo!("Error: no contiguous allocaiton found"))
+  }
+
+  fn bitmap_scan_and_flip(&mut self, start: u32, cnt: u32, val: bool) -> Result<u32, FsErrors> {
+    let idx = self.bitmap_scan(start, cnt, val)?;
+
+    self.set_multiple_bitmap(start, cnt, !val);
+    Ok(idx)
+  }
+
+  fn bitmap_file_size(&self) -> u32 {
+    byte_cnt(self.bit_cnt)
+  }
+
+  fn read_bitmap_from_file() {
+    todo!();
+  }
+
+  fn write_bitmap_to_file() {
+    todo!();
   }
 }
