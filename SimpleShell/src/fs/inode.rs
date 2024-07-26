@@ -2,7 +2,8 @@ use std::{collections::VecDeque, cmp::min};
 
 use crate::fs::block::Block;
 use crate::fs::cache::Cache;
-use super::{block::{BlockSectorT, BLOCK_SECTOR_SIZE}, fs_errors::FsErrors};
+use crate::fs::free_map;
+use super::{block::{BlockSectorT, BLOCK_SECTOR_SIZE}, fs_errors::FsErrors, free_map::free_map_release};
 
 const DIRECT_BLOCKS_COUNT: u32 = 123u32;
 const INDIRECT_BLOCKS_PER_SECTOR: u32 = 128u32;
@@ -229,6 +230,52 @@ impl MemoryInode {
 
     assert!(num_sectors == 0);
     Ok(data_sectors)
+  }
+
+  fn deallocate(&self) -> Result<(),FsErrors> {
+    let file_length = self.data.length;
+
+    if file_length < 0 {
+      todo!("REturn err");
+    }
+
+    let mut num_sectors = bytes_to_sectors(file_length);
+    let mut limit;
+
+    //Direct Blocks
+    limit = min(num_sectors, DIRECT_BLOCKS_COUNT);
+    for i in 0..limit {
+      todo!("Free-map release");
+      free_map_release();
+    }
+    num_sectors -= limit;
+
+    //Single Indirect Block
+    limit = min(num_sectors, INDIRECT_BLOCKS_PER_SECTOR);
+    if l <= 0 {
+      assert!(num_sectors == 0);
+      Ok(())
+    }
+
+    Self::deallocate_indirect()?;
+
+
+    //Doubly indirect Blocks
+    limit = min(num_sectors, INDIRECT_BLOCKS_PER_SECTOR * INDIRECT_BLOCKS_PER_SECTOR);
+    if l <= 0 {
+      assert!(num_sectors == 0);
+      Ok(())
+    }
+
+    Self::deallocate_indirect(cache, block, entry, num_sectors, lvl)
+
+
+    assert!(num_sectors == 0);
+    Ok(())
+  }
+
+  fn deallocate_indirect(cache: &mut Cache, block: &Block, entry: BlockSectorT, num_sectors: u32, lvl: u32) -> Result<(), FsErrors> {
+    todo!()
   }
 }
 
