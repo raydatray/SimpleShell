@@ -1,4 +1,4 @@
-use std::array::from_fn;
+use std::{array::from_fn, cell::{Cell, RefCell, RefMut}};
 
 use crate::fs::block::Block;
 use super::{block::{BlockSectorT, BLOCK_SECTOR_SIZE}, fs_errors::FsErrors};
@@ -29,7 +29,7 @@ impl CacheEntry {
       todo!("Return some error here");
     }
 
-    if self.dirty  {
+    if self.dirty {
       block.write_buffer_to_block(self.disk_sector.unwrap(), &self.buffer)?;
       self.dirty = false
     }
@@ -38,71 +38,70 @@ impl CacheEntry {
 }
 
 pub struct Cache {
-  cache: [CacheEntry; CACHE_SIZE],
-  clock: usize
+  cache: [RefCell<CacheEntry>; CACHE_SIZE],
+  clock: Cell<u32>
 }
 
 impl Cache {
   pub fn new() -> Cache {
     Cache {
-      cache: from_fn::<_, CACHE_SIZE, _>(|_| CacheEntry::new()),
-      clock: 0
+      cache: from_fn::<_, CACHE_SIZE, _>(|_| RefCell::new(CacheEntry::new())),
+      clock: Cell::new(0u32)
     }
   }
 
-  pub fn close_cache(&mut self, block: &Block) -> Result<(), FsErrors> {
-    for entry in self.cache.iter_mut() {
-      if !entry.occupied {
-        continue
-      };
-      entry.flush_cache_entry(block)?;
+  pub fn close_cache(&self, block: &Block) -> Result<(), FsErrors> {
+    for entry in self.cache.iter(){
+      let mut entry = entry.borrow_mut();
+      if entry.occupied {
+        entry.flush_cache_entry(block)?;
+      }
     }
     Ok(())
   }
 
-  pub fn cache_lookup(&mut self, sector: BlockSectorT) -> Option<&mut CacheEntry> {
-    for entry in self.cache.iter_mut() {
-      if !entry.occupied {
-        continue
-      }
-      if entry.disk_sector.unwrap() == sector {
-        return Some(entry);
+  pub fn cache_lookup(&self, sector: BlockSectorT) -> Option<RefMut<CacheEntry>> {
+    for entry in self.cache.iter() {
+      let entry = entry.borrow_mut();
+      if entry.occupied && entry.disk_sector == Some(sector) {
+        return Some(entry)
       }
     }
     None
   }
 
-  fn evict_cache(&mut self, block: &Block) -> Result<&mut CacheEntry, FsErrors> {
+  fn evict_cache(&self, block: &Block) -> Result<RefMut<CacheEntry>, FsErrors> {
     loop {
-      if !self.cache[self.clock].occupied {
-        return Ok(&mut self.cache[self.clock]);
+      let clock = self.clock.get();
+      let mut entry = self.cache[clock as usize].borrow_mut();
+
+      if !entry.occupied {
+        return Ok(entry)
       }
 
-      if self.cache[self.clock].access {
-        self.cache[self.clock].access = false;
+      if entry.access {
+        entry.access = false;
       } else {
-        break;
+        break
       }
 
-      self.clock += 1;
-      self.clock %= CACHE_SIZE as usize;
+      self.clock.set((clock + 1) % CACHE_SIZE as u32);
     }
 
-    {
-      let entry = &mut self.cache[self.clock];
-      if entry.dirty {
-        entry.flush_cache_entry(block)?;
-      }
-      entry.occupied = false;
-    }
+    let clock = self.clock.get();
+    let mut entry = self.cache[clock as usize].borrow_mut();
 
-    return Ok(&mut self.cache[self.clock])
+    if entry.dirty {
+      entry.flush_cache_entry(block)?;
+    }
+    entry.occupied = false;
+    Ok(entry)
   }
 
   //Read a cache entry into memory
-  pub fn read_cache_to_buffer(&mut self, block: &Block, sector: BlockSectorT, buffer: &mut [u8]) -> Result<(), FsErrors> {
+  pub fn read_cache_to_buffer(&self, block: &Block, sector: BlockSectorT, buffer: &mut [u8]) -> Result<(), FsErrors> {
+    let mut entry;
     let slot = self.cache_lookup(sector);
-    let entry: &mut CacheEntry;
 
     if let None = slot {
       entry = self.evict_cache(block)?;
@@ -112,18 +111,19 @@ impl Cache {
       entry.dirty = false;
       block.read_block_to_buffer(sector, &mut entry.buffer)?;
     } else {
-      entry = slot.unwrap();
+      entry = slot.unwrap()
     }
 
     entry.access = true;
     buffer.copy_from_slice(entry.buffer.as_slice());
+
     Ok(())
   }
 
   //Write a cache entry from memory
-  pub fn write_cache_from_buffer(&mut self, block: &Block, sector: BlockSectorT, buffer: &[u8]) -> Result<(), FsErrors> {
+  pub fn write_cache_from_buffer(&self, block: &Block, sector: BlockSectorT, buffer: &[u8]) -> Result<(), FsErrors> {
+    let mut entry;
     let slot = self.cache_lookup(sector);
-    let entry: &mut CacheEntry;
 
     if let None = slot {
       entry = self.evict_cache(block)?;

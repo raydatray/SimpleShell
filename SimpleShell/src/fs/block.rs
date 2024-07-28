@@ -1,5 +1,4 @@
 use std::cell::Cell;
-
 use crate::fs::fs_errors::FsErrors;
 use crate::fs::ata::AtaDisk;
 
@@ -36,13 +35,13 @@ pub struct Block<'a> {
   write_count : Cell<u64>, //Allows all block methods to &self
   read_count : Cell<u64>,
   hardware_ops: HardwareOperations<'a>,
-  //todo: aux data as referencE (Either partition or ata disk)
-  //Can't use weak unless we use RC-allocated(dont want to!!)
+  //AUX: We use this to call the fns from ata disks or partitions
+  //Since our hardware_ops closures capture those references already, we don't need them!
 }
 
 impl<'a> Block<'a> {
-  pub fn new(name: String, file_name: String, size: BlockSectorT, hardware_ops: HardwareOperations<'a>) -> Block<'a> {
-    Block {
+  pub fn new(name: String, file_name: String, size: BlockSectorT, hardware_ops: HardwareOperations<'a>) -> Self {
+    Self {
       name,
       file_name,
       size,
@@ -51,6 +50,7 @@ impl<'a> Block<'a> {
       hardware_ops
     }
   }
+
   fn check_sector(&self, sector: BlockSectorT) ->  Result<(), FsErrors> {
     if sector >= self.size {
       return Err(FsErrors::SectorOutOfBounds(sector));

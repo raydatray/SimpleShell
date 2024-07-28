@@ -105,4 +105,13 @@ impl PartitionTable {
   }
 }
 
-pub fn partition_scan(starting_block: Block, )
+///Scan BLOCK for partitions
+pub fn partition_scan(starting_block: Block, fname: String) -> Result<(), FsErrors> {
+  let mut partition_num = 0usize;
+  PartitionTable::read_partition_table(starting_block, 0, 0, &mut partition_num, fname)?;
+
+  if partition_num == 0 {
+    println!("{}: Device contains no partitions", starting_block.get_block_name());
+  }
+  Ok(())
+}

@@ -1,19 +1,19 @@
-use std::{fs::{metadata, File, Metadata}, io::Write, os::{macos::fs::MetadataExt, unix::fs::{FileExt, MetadataExt}}, rc::{Rc, Weak}};
+use std::{fs::{metadata, File, Metadata, OpenOptions}, io::Write, os::{macos::fs::MetadataExt, unix::fs::{FileExt, MetadataExt}}, rc::{Rc, Weak}};
 
 use super::{block::{Block, BlockSectorT, HardwareOperations, BLOCK_SECTOR_SIZE}, fs_errors::FsErrors};
 
-const CHANNEL_COUNT: u8 = 2u8;
-const DEVICE_COUNT: u8 = 2u8;
+const CHANNEL_COUNT: usize = 2usize;
+const DEVICE_COUNT: usize = 2usize;
 
 //Top level controller, where we support two "legacy" ATA channels
 struct Controller {
-  channels: [Channel; CHANNEL_COUNT as usize]
+  channels: [Channel; CHANNEL_COUNT]
 }
 
 //An ATA channel, where we support up to two disks
 struct Channel {
   name: String,
-  devices: [Rc<AtaDisk>; DEVICE_COUNT as usize]
+  devices: [Option<AtaDisk>; DEVICE_COUNT]
 }
 
 enum DiskType {
@@ -23,31 +23,59 @@ enum DiskType {
 
 pub struct AtaDisk {
   name: String,
-  channel: Weak<Channel>,
+  channel: usize, //Store the channel index within the controller instead
   disk_type: DiskType,
   is_ata: bool,
-  file_path: String,
+  file_name: String,
   file_descriptor: File
 }
 
 impl Controller {
-
+  fn new() -> Self {
+    Self {
+      channels: [
+        Channel::new("ide0"),
+        Channel::new("ide1")
+      ]
+    }
+  }
 }
 
-
+impl Channel {
+  fn new(name: &str) -> Self {
+    Self {
+      name: name.to_string(),
+      devices: [None, None]
+    }
+  }
+}
 
 impl AtaDisk {
-  fn identify_and_register_ata_device(&self) -> Result<(), FsErrors> {
-    if !self.is_ata {
-      todo!();
-    }
+  fn new(hd: String, channel_num: usize, disk_suffix: usize) -> Result<Self, FsErrors> {
+    let disk_name = format!("hd{}", disk_suffix);
+    let file_descriptor = OpenOptions::new().read(true).write(true).open(&hd)?;
+
+    Ok(
+      Self {
+        name: disk_name,
+        channel: channel_num,
+        disk_type: DiskType::Master,
+        is_ata: true,
+        file_name: hd,
+        file_descriptor
+      }
+    )
+  }
+
+  fn identify_ata_device(&self) -> Result<(), FsErrors> {
+    assert!(self.is_ata);
 
     let meta = metadata(self.file_path)?;
     let capacity = meta.st_size() / BLOCK_SECTOR_SIZE as u64;
-    let block_operations = HardwareOperations::new(&self);
+    let ata_ops = HardwareOperations::new(&self);
 
-    let block = Block::new(self.name, self.file_path, capacity as BlockSectorT, hardware_ops);
-    //partition scan
+    let block = Block::new(self.name, self.file_path, capacity as BlockSectorT, ata_ops);
+
 
 
   }

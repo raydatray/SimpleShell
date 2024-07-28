@@ -50,7 +50,7 @@ pub struct Bitmap {
 
 impl Bitmap {
   //Init a new bitmap with all bits set as 0
-  fn new(bit_cnt: u32) -> Self {
+  pub fn new(bit_cnt: u32) -> Self {
     let element_count = byte_cnt(bit_cnt);
     Self {
       bit_cnt,
@@ -80,7 +80,7 @@ impl Bitmap {
     bitmap
   }
 
-  fn get_bitmap_size(&self) -> u32 {
+  pub fn get_bitmap_size(&self) -> u32 {
     self.bit_cnt
   }
 
@@ -101,14 +101,14 @@ impl Bitmap {
     }
   }
 
-  fn bitmap_mark(&mut self, bit_idx: u32) {
+  pub fn bitmap_mark(&mut self, bit_idx: u32) {
     let idx = element_idx(bit_idx);
     let mask = bit_mask(bit_idx);
 
     self.bits[idx as usize] |= mask;
   }
 
-  fn bitmap_reset(&mut self, bit_idx: u32) {
+  pub fn bitmap_reset(&mut self, bit_idx: u32) {
     let idx = element_idx(bit_idx);
     let mask = bit_mask(bit_idx);
 
@@ -138,7 +138,7 @@ impl Bitmap {
     (start..start + cnt).map(|i| self.set_bitmap(start + i, val));
   }
 
-  fn bitmap_cnt(&self, start: u32, cnt: u32, val: bool) -> u32 {
+  pub fn bitmap_cnt(&self, start: u32, cnt: u32, val: bool) -> u32 {
     assert!(start <= self.bit_cnt);
     assert!(start + cnt <= self.bit_cnt);
 
@@ -175,7 +175,7 @@ impl Bitmap {
     (start..=last).find(|i| !self.bitmap_contains(*i, cnt, !val)).ok_or(todo!("Error: no contiguous allocaiton found"))
   }
 
-  fn bitmap_scan_and_flip(&mut self, start: u32, cnt: u32, val: bool) -> Result<u32, FsErrors> {
+  pub fn bitmap_scan_and_flip(&mut self, start: u32, cnt: u32, val: bool) -> Result<u32, FsErrors> {
     let idx = self.bitmap_scan(start, cnt, val)?;
 
     self.set_multiple_bitmap(start, cnt, !val);
