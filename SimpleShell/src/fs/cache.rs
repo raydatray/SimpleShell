@@ -5,41 +5,18 @@ use super::{block::{BlockSectorT, BLOCK_SECTOR_SIZE}, fs_errors::FsErrors};
 
 const CACHE_SIZE: usize = 64usize;
 
+pub struct Cache {
+  //We do not hold a block reference as one cache may serve multiple block devices
+  cache: [RefCell<CacheEntry>; CACHE_SIZE],
+  clock: Cell<u32>
+}
+
 struct CacheEntry {
   occupied: bool,
   disk_sector: Option<BlockSectorT>,
   buffer: [u8; BLOCK_SECTOR_SIZE as usize],
   dirty: bool,
   access: bool
-}
-
-impl CacheEntry {
-  fn new() -> CacheEntry {
-    CacheEntry {
-      occupied: false,
-      disk_sector: None,
-      buffer: [0; BLOCK_SECTOR_SIZE as usize],
-      dirty: false,
-      access: false
-    }
-  }
-
-  pub fn flush_cache_entry(&mut self, block: &Block) -> Result<(), FsErrors> {
-    if !self.occupied {
-      todo!("Return some error here");
-    }
-
-    if self.dirty {
-      block.write_buffer_to_block(self.disk_sector.unwrap(), &self.buffer)?;
-      self.dirty = false
-    }
-    Ok(())
-  }
-}
-
-pub struct Cache {
-  cache: [RefCell<CacheEntry>; CACHE_SIZE],
-  clock: Cell<u32>
 }
 
 impl Cache {
@@ -139,6 +116,30 @@ impl Cache {
     entry.access = true;
     entry.dirty = true;
     entry.buffer.copy_from_slice(buffer);
+    Ok(())
+  }
+}
+
+impl CacheEntry {
+  fn new() -> CacheEntry {
+    CacheEntry {
+      occupied: false,
+      disk_sector: None,
+      buffer: [0; BLOCK_SECTOR_SIZE as usize],
+      dirty: false,
+      access: false
+    }
+  }
+
+  pub fn flush_cache_entry(&mut self, block: &Block) -> Result<(), FsErrors> {
+    if !self.occupied {
+      todo!("Return some error here");
+    }
+
+    if self.dirty {
+      block.write_buffer_to_block(self.disk_sector.unwrap(), &self.buffer)?;
+      self.dirty = false
+    }
     Ok(())
   }
 }

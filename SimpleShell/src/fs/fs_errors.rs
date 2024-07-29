@@ -9,9 +9,10 @@ pub enum FsErrors {
   SectorOutOfBounds(BlockSectorT),
   NotATADevice(String),
   InvalidPartitionTableSignature(String),
-  InvalidExtendedPartitionTable(String,BlockSectorT),
+  InvalidExtendedPartitionTable(String, BlockSectorT),
   PartitionStartPastEOD(BlockSectorT),
   PartitionEndPastEOD(BlockSectorT),
+  PastEOF(),
   IoError(String)
 }
 
@@ -26,6 +27,7 @@ impl Display for FsErrors {
       Self::InvalidExtendedPartitionTable(devuice_name, sector) => format!("Device {} has an invalid extended partition table in sector {}", device_name, sector),
       Self::PartitionStartPastEOD(sector) => format!("Partition starts past EOD: Sector {}", sector),
       Self::PartitionEndPastEOD(sector) => format!("Partition end past EOD: Sector {}", sector),
+      Self::PastEOF() => format!("Past EOF"),
       Self::IoError(v) => format!("{}", v)
     };
 

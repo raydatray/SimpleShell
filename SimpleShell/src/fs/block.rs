@@ -10,6 +10,17 @@ pub struct HardwareOperations<'a> {
   hardware_write: Box<dyn Fn(BlockSectorT, &[u8]) -> Result<(), FsErrors> + 'a>
 }
 
+pub struct Block<'a> {
+  name: String,
+  file_name : String,
+  size : BlockSectorT,
+  write_count : Cell<u64>, //Allows all block methods to &self
+  read_count : Cell<u64>,
+  hardware_ops: HardwareOperations<'a>,
+  //AUX: We use this to call the fns from ata disks or partitions
+  //Since our hardware_ops closures capture those references already, we don't need them!
+}
+
 impl<'a> HardwareOperations<'a> {
   pub fn new(disk: &'a AtaDisk) -> HardwareOperations<'a> {
     HardwareOperations {
@@ -26,17 +37,6 @@ impl<'a> HardwareOperations<'a> {
   pub fn write_buffer_to_block(&self, sector: BlockSectorT, buffer: &[u8]) -> Result<(), FsErrors> {
     (self.hardware_write)(sector, buffer)
   }
-}
-
-pub struct Block<'a> {
-  name: String,
-  file_name : String,
-  size : BlockSectorT,
-  write_count : Cell<u64>, //Allows all block methods to &self
-  read_count : Cell<u64>,
-  hardware_ops: HardwareOperations<'a>,
-  //AUX: We use this to call the fns from ata disks or partitions
-  //Since our hardware_ops closures capture those references already, we don't need them!
 }
 
 impl<'a> Block<'a> {

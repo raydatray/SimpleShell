@@ -1,5 +1,5 @@
 use crate::fs::bitmap::Bitmap;
-use super::{file_sys::{FREE_MAP_SECTOR, ROOT_DIR_SECTOR}, fs_errors::FsErrors};
+use super::{block::BlockSectorT, file_sys::{FREE_MAP_SECTOR, ROOT_DIR_SECTOR}, fs_errors::FsErrors};
 
 pub struct Freemap {
   inner: Bitmap
@@ -21,7 +21,7 @@ impl Freemap {
   }
 
   ///Allocates CNT consecutive sectors, and returns the first sector if successful
-  fn free_map_allocate(&mut self, cnt: u32) -> Result<(), FsErrors> {
+  pub fn allocate(&mut self, cnt: u32) -> Result<BlockSectorT, FsErrors> {
     let sector = self.inner.bitmap_scan_and_flip(0, cnt, false)?;
 
   }
