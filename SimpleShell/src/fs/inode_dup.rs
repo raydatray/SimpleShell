@@ -1,4 +1,4 @@
-use std::{cmp::min, intrinsics::size_of, mem};
+use std::{cell::{RefCell, RefMut}, cmp::min, intrinsics::size_of, mem};
 use slotmap::{new_key_type, SlotMap};
 
 use crate::fs::block::Block;
@@ -10,14 +10,10 @@ const DIRECT_BLOCKS_COUNT: u32 = 123u32;
 const INDIRECT_BLOCKS_PER_SECTOR: u32 = 128u32;
 const INODE_SIGNATURE: u32 = 0x494e4f44;
 
-new_key_type! {
-  pub struct InodeKey;
-}
-
 pub struct InodeList<'b, 'a: 'b> {
   block: &'b Block<'a>,
   cache: &'b Cache,
-  inner: SlotMap<InodeKey, MemoryInode>
+  inner: Vec<RefCell<MemoryInode>>
 }
 
 pub struct MemoryInode {
@@ -52,49 +48,50 @@ impl<'b, 'a: 'b> InodeList<'b,'a> {
     Self {
       block,
       cache,
-      inner: SlotMap::with_key()
+      inner: Vec::new()
     }
   }
 
-  pub fn open_inode(&mut self, sector: BlockSectorT) -> Result<InodeKey, FsErrors> {
-    return match self.inner.iter().find(|(_, inode)| { inode.sector == sector }) {
-      Some((inode_key, _)) =>  Ok(inode_key),
-      None => {
-        let memory_inode = MemoryInode::new(&self.block, &self.cache, sector)?;
-        let inode_key = self.inner.insert(memory_inode);
-        Ok(inode_key)
-      }
-    }
-  }
-
-  pub fn get_inode(&mut self, inode_key: InodeKey) -> Result<&mut MemoryInode, FsErrors> {
-    return match self.inner.get_mut(inode_key) {
-      Some(inode) => Ok(inode),
-      None => Err(todo!())
-    }
-  }
-
-  pub fn close_inode(&mut self, inode_key: InodeKey) -> Result<(), FsErrors> {
-    return match self.inner.get_mut(inode_key) {
-      Some(inode) => {
-        if (inode.open_cnt -= 1) == 0 {
-          if inode.removed {
-            free_map_release(inode.sector, 1);
-            inode.deallocate()?;
-          }
-          self.inner.remove(inode_key);
-        }
-        Ok(())
+  pub fn open_inode(&mut self, sector: BlockSectorT) -> Result<RefMut<MemoryInode>, FsErrors> {
+    return match self.inner.iter().find(|memory_inode| { memory_inode.borrow().sector == sector }) {
+      Some(memory_inode) => {
+        Ok(memory_inode.borrow_mut())
       },
       None => {
-        Err(todo!())
+        let memory_inode = MemoryInode::new(self.block, self.cache, sector)?;
+        let celled_inode = RefCell::new(memory_inode);
+        self.inner.push(celled_inode);
+
+        Ok(celled_inode.borrow_mut())
       }
     }
+  }
+
+  pub fn close_inode(&mut self, inode: RefMut<MemoryInode>) -> Result<(), FsErrors> {
+    let close_entry = { (inode.open_cnt -= 1) == 0 };
+
+    if inode.removed {
+      free_map_release(inode.sector, 1);
+      inode.deallocate(self.cache, self.block)?;
+    }
+
+    drop(inode);
+
+    if close_entry {
+      return match self.inner.iter().position(|inode| inode.borrow().open_cnt == 0) {
+        Some(index) => {
+          self.inner.remove(index);
+          Ok(())
+        },
+        None => Err(todo!())
+      }
+    }
+    Ok(())
   }
 }
 
 impl MemoryInode {
-  pub fn new(block: &Block, cache: &Cache, sector: BlockSectorT) -> Result<Self, FsErrors> {
+  fn new(block: &Block, cache: &Cache, sector: BlockSectorT) -> Result<Self, FsErrors> {
     let mut buffer = [0u8; BLOCK_SECTOR_SIZE as usize];
     cache.read_cache_to_buffer(block, sector, &mut buffer)?;
 
@@ -201,9 +198,8 @@ impl MemoryInode {
       length -= chunk_size;
       offset += chunk_size;
       bytes_written += chunk_size;
-      }
-      Ok(bytes_written)
     }
+    Ok(bytes_written)
   }
 
   pub fn deny_write(&mut self) -> () {
@@ -387,6 +383,26 @@ impl MemoryInode {
 }
 
 impl DiskInode {
+  pub fn new(block: &Block, cache: &Cache, freemap: &Freemap, sector: BlockSectorT, length: u32, is_directory: bool) -> Result<(), FsErrors>{
+    const _: () = {
+      let disk_inode_size = mem::size_of::<Self>();
+      assert_eq!(disk_inode_size, BLOCK_SECTOR_SIZE as usize, "Disk inodes were not {} bytes in size, actual size: {}", BLOCK_SECTOR_SIZE, disk_inode_size);
+    };
+
+    let mut disk_inode = Self {
+      direct_blocks: [0u32; DIRECT_BLOCKS_COUNT as usize],
+      indirect_block: 0u32,
+      doubly_indirect_block: 0u32,
+      is_directory,
+      length,
+      signature: INODE_SIGNATURE
+    };
+
+    disk_inode.allocate(cache, block, freemap)?;
+    cache.write_cache_from_buffer(block, sector, disk_inode.to_bytes())?;
+    Ok(())
+  }
+
   fn to_bytes(&self) -> &[u8; 512] {
     assert_eq!(mem::size_of::<Self>(), 512);
 

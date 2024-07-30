@@ -68,16 +68,7 @@ impl AtaDisk {
   }
 
   fn identify_ata_device(&self) -> Result<(), FsErrors> {
-    assert!(self.is_ata);
-
-    let meta = metadata(self.file_path)?;
-    let capacity = meta.st_size() / BLOCK_SECTOR_SIZE as u64;
-    let ata_ops = HardwareOperations::new(&self);
-
-    let block = Block::new(self.name, self.file_path, capacity as BlockSectorT, ata_ops);
-
-
-
+    todo!()
   }
 
   pub fn ata_disk_read(&self, sector_num: BlockSectorT, buffer: &mut [u8]) -> Result<(), FsErrors> {

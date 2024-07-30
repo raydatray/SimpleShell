@@ -1,70 +1,96 @@
-use std::collections::VecDeque;
+use std::cell::{RefCell, RefMut};
+use super::{free_map::Freemap, fs_errors::FsErrors, inode_dup::{InodeList, MemoryInode}};
 
-use super::{fs_errors::FsErrors, inode::{InodeKey, MemoryInode}};
-
-struct FileTable {
-  inner: VecDeque<FileTableEntry>
+pub struct FileTable {
+  inner: Vec<FileTableEntry>
 }
 
 struct FileTableEntry {
-
+  file_name: String,
+  file: RefCell<File>,
+  index: FileTableKey
 }
 
-struct File {
-  inode: InodeKey,
-  offset: u32,
+pub struct File {
+  inode: RefMut<MemoryInode>,
+  position: u32,
   deny_write: bool
 }
 
 impl FileTable {
   pub fn new() -> Self {
     Self {
-      inner: VecDeque::new()
+      inner: SlotMap::with_key()
     }
+  }
+
+  pub fn add_by_name(&mut self, file: File, file_name: String) {
+    if let Some(_) = self.get_by_name(file_name) {
+      return
+    }
+  }
+
+  pub fn get_by_name(&self, file_name: String) -> Option<FileTableKey> {
+    self.inner.iter().find_map(|(key, entry)| {
+      if entry.file_name == file_name {
+        Some(key)
+      } else {
+        None
+      }
+    })
   }
 }
 
 impl FileTableEntry {
-
 }
 
 impl File {
-
-
-
-  fn file_close(&mut self) {
-    self.file_allow_write();
-
+  pub fn open(inode: RefMut<MemoryInode>) -> Self {
+    Self {
+      inode,
+      position: 0u32,
+      deny_write: false
+    }
   }
 
-  fn file_get_inode(&self) -> &MemoryInode {
+  pub fn close(&mut self, inode_list: &mut InodeList) -> Result<(), FsErrors>{
+    self.file_allow_write();
+    inode_list.close_inode(inode)
+    //free(self)???
+  }
+
+  fn get_inode(&self) -> RefMut<MemoryInode> {
     self.inode
   }
 
-  fn file_read(&mut self, buffer: &mut [u8], size: u32) -> Result<u32, FsErrors> {
-    todo!();
+  pub fn read(&mut self, buffer: &mut [u8], size: u32) -> Result<u32, FsErrors> {
+    let bytes_read = self.inode.read_at(cache, block, buffer, size, self.position)?;
+    self.position += bytes_read;
+    Ok(bytes_read)
   }
 
-  fn file_read_at(&self, buffer: &mut [u8], size: u32, offset: u32) -> Result<u32, FsErrors> {
-    todo!();
+  pub fn read_at(&self, buffer: &mut [u8], size: u32, offset: u32) -> Result<u32, FsErrors> {
+    self.inode.read_at(cache, block, buffer, size, offset)
   }
 
-  fn file_write(&mut self, buffer: &[u8], size: u32) -> Result<u32, FsErrors> {
-    todo!()
+  pub fn write(&mut self, freemap: &mut Freemap, buffer: &[u8], size: u32) -> Result<u32, FsErrors> {
+    let bytes_written = self.inode.write_at(cache, block, freemap, buffer, size, self.position)?;
+    self.position += bytes_written;
+    Ok(bytes_written)
   }
 
-  fn file_write_at(&self, buffer: &[u8], size: u32, offset: u32) -> Result<u32, FsErrors> {
-    todo!()
+  pub fn write_at(&self, freemap: &mut Freemap, buffer: &[u8], size: u32, offset: u32) -> Result<u32, FsErrors> {
+    self.inode.write_at(cache, block, freemap, buffer, size, offset)
   }
 
-  fn file_deny_write(&mut self) {
+  fn deny_write(&mut self) {
     if !self.deny_write {
       self.deny_write = true;
       self.inode.deny_write();
     }
   }
 
-  fn file_allow_write(&mut self) {
+  fn allow_write(&mut self) {
     if self.deny_write {
       self.deny_write = false;
       self.inode.allow_write();

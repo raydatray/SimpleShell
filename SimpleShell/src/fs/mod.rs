@@ -6,5 +6,6 @@ mod bitmap;
 mod cache;
 mod file;
 mod inode;
+mod inode_dup;
 mod free_map;
 mod file_sys;
