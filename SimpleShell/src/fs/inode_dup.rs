@@ -8,15 +8,13 @@ const DIRECT_BLOCKS_COUNT: u32 = 123u32;
 const INDIRECT_BLOCKS_PER_SECTOR: u32 = 128u32;
 const INODE_SIGNATURE: u32 = 0x494e4f44;
 
-pub struct InodeList<'b, 'a: 'b> {
-  block: &'b Block<'a>,
-  cache: &'b Cache,
+pub struct InodeList {
   inner: Vec<Rc<RefCell<MemoryInode>>>
 }
 
 pub struct MemoryInode {
   sector: BlockSectorT,
-  open_cnt: u32,
+  open_cnt: u32, //Redundant since we wrap this type in a RC ??
   removed: bool,
   deny_write_count: u32,
   data: DiskInode
@@ -41,11 +39,9 @@ fn bytes_to_sectors(size: u32) -> u32 {
   size.div_ceil(BLOCK_SECTOR_SIZE)
 }
 
-impl<'b, 'a: 'b> InodeList<'b,'a> {
-  pub fn new(block: &'a Block, cache: &'a Cache) -> Self {
+impl InodeList {
+  pub fn new() -> Self {
     Self {
-      block,
-      cache,
       inner: Vec::new()
     }
   }
@@ -383,12 +379,12 @@ impl MemoryInode {
 }
 
 impl DiskInode {
-  pub fn new(block: &Block, cache: &Cache, freemap: &Freemap, sector: BlockSectorT, length: u32, is_directory: bool) -> Result<(), FsErrors>{
-    const _: () = {
-      let disk_inode_size = mem::size_of::<Self>();
-      assert_eq!(disk_inode_size, BLOCK_SECTOR_SIZE as usize, "Disk inodes were not {} bytes in size, actual size: {}", BLOCK_SECTOR_SIZE, disk_inode_size);
-    };
+  const _: () = {
+    let disk_inode_size = mem::size_of::<Self>();
+    assert_eq!(disk_inode_size, BLOCK_SECTOR_SIZE as usize, "Disk inodes were not {} bytes in size, actual size: {}", BLOCK_SECTOR_SIZE, disk_inode_size);
+  };
 
+  pub fn new(block: &Block, cache: &Cache, freemap: &Freemap, sector: BlockSectorT, length: u32, is_directory: bool) -> Result<(), FsErrors>{
     let mut disk_inode = Self {
       direct_blocks: [0u32; DIRECT_BLOCKS_COUNT as usize],
       indirect_block: 0u32,

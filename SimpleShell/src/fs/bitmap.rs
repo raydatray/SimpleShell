@@ -1,5 +1,4 @@
-use std::cell::RefCell;
-use std::{mem, slice};
+use std::{mem, cell::RefCell};
 use super::{file::File, free_map::Freemap, fs_errors::FsErrors};
 
 type ElementType = u32;
@@ -81,16 +80,6 @@ impl Bitmap {
       bit_cnt,
       bits: RefCell::new(bits)
     }
-  }
-
-  fn get_bits_as_slice(&self) -> &[u8] {
-    let bits = self.bits.borrow();
-    let size = byte_cnt(self.bit_cnt);
-
-    let bytes = unsafe {
-      slice::from_raw_parts(bits.as_ptr() as *const u8, size as usize)
-    };
-    bytes
   }
 
   pub fn get_size(&self) -> u32 {
@@ -201,26 +190,22 @@ impl Bitmap {
 
   pub fn read_from_file(&self, file: &mut File) -> Result<u32, FsErrors> {
     let size = byte_cnt(self.bit_cnt);
-    let mut buffer = vec![0u8; size as usize];
-    let bytes_read = file.read_at(&mut buffer , size, 0)?;
+    let mut buffer= vec![0u8; size as usize];
+    let bytes_read = file.read_at(&mut buffer, size, 0)?;
 
     assert_eq!(bytes_read, size);
 
-    let mut bits = self.bits.borrow_mut();
-    unsafe {
-      std::ptr::copy_nonoverlapping(
-        buffer.as_ptr() as *const ElementType,
-        bits.as_mut_ptr(),
-        element_cnt(self.bit_cnt) as usize
-      )
-    }
+    let read_bits: Vec<ElementType> = bytemuck::allocation::cast_vec(buffer);
 
-    bits[(element_cnt(self.bit_cnt) - 1) as usize] &= last_mask(self);
+    read_bits[(element_cnt(self.bit_cnt) - 1) as usize] &= last_mask(self);
+    self.bits.replace(read_bits);
     Ok(bytes_read)
   }
 
   pub fn write_to_file(&self, freemap: &mut Freemap, file: &mut File) -> Result<u32, FsErrors>{
     let size = byte_cnt(self.bit_cnt);
-    file.write_at(freemap, self.get_bits_as_slice(), size, 0)
+    let bits: Vec<u8> = bytemuck::cast_vec(*self.bits);
+
+    file.write_at(freemap, &bits, size, 0)
   }
 }

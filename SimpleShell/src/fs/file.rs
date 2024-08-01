@@ -8,8 +8,7 @@ pub struct FileTable {
 
 struct FileTableEntry {
   file_name: String,
-  file: RefCell<File>,
-  index: FileTableKey
+  file: Rc<RefCell<File>>,
 }
 
 pub struct File {
@@ -21,28 +20,39 @@ pub struct File {
 impl FileTable {
   pub fn new() -> Self {
     Self {
-      inner: SlotMap::with_key()
+      inner: Vec::new()
     }
   }
 
-  pub fn add_by_name(&mut self, file: File, file_name: String) {
-    if let Some(_) = self.get_by_name(file_name) {
+  pub fn add_by_name(&mut self, file: Rc<RefCell<File>>, file_name: String) {
+    if let Some(_) = self.get_by_name(&file_name) {
       return
+    } else {
+      let file_table_entry = FileTableEntry::new(file_name, file);
+      self.inner.push(file_table_entry);
     }
   }
 
-  pub fn get_by_name(&self, file_name: String) -> Option<FileTableKey> {
-    self.inner.iter().find_map(|(key, entry)| {
-      if entry.file_name == file_name {
-        Some(key)
+  pub fn get_by_name(&self, file_name: &String) -> Option<Rc<RefCell<File>>> {
+    self.inner.iter().find_map(|entry| {
+      if entry.file_name == *file_name {
+        Some(entry.file.clone())
       } else {
         None
       }
     })
   }
+
+
 }
 
 impl FileTableEntry {
+  pub fn new(file_name: String, file: Rc<RefCell<File>>) -> Self {
+    Self {
+      file_name,
+      file
+    }
+  }
 }
 
 impl File {
@@ -66,7 +76,7 @@ impl File {
   }
 
   fn get_inode(&self) -> Rc<RefCell<MemoryInode>> {
-    return match self.inode {
+    return match &self.inode {
       Some(inode) => inode.clone(),
       None => todo!("Some error")
     }

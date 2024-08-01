@@ -6,8 +6,8 @@ use crate::fs::inode_dup::DiskInode;
 use super::{block::BlockSectorT, file::File, file_sys::{FREE_MAP_SECTOR, ROOT_DIR_SECTOR}, fs_errors::FsErrors, inode_dup::InodeList};
 
 pub struct Freemap {
-  inner: RefCell<Bitmap>,
-  file: Cell<Option<File>>
+  inner: Bitmap,
+  file: Option<File>
 }
 
 impl Freemap {
@@ -17,8 +17,8 @@ impl Freemap {
     bitmap.mark(ROOT_DIR_SECTOR);
 
     Self {
-      inner: RefCell::new(bitmap),
-      file: Cell::new(None)
+      inner: bitmap,
+      file: None
     }
   }
 
@@ -29,19 +29,6 @@ impl Freemap {
 
   ///Allocates CNT consecutive sectors, and returns the first sector if successful
   pub fn allocate(&self, cnt: u32) -> Result<BlockSectorT, FsErrors> {
-    let mut bitmap = self.inner.borrow_mut();
-    let sector = bitmap.scan_and_flip(0, cnt, false)?;
-
-    drop(bitmap);
-    let bitmap = self.inner.borrow()
-
-    if let Some(file) = self.file.get() {
-      match bitmap.write_to_file(&self, )
-    }
-
-
-
-
     let sector = self.inner.scan_and_flip(0, cnt, false)?;
 
     if let Some(file) = &mut self.file {
