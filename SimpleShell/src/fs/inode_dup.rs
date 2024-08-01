@@ -1,6 +1,4 @@
-use std::{cell::{RefCell, RefMut}, cmp::min, intrinsics::size_of, mem};
-use slotmap::{new_key_type, SlotMap};
-
+use std::{cell::RefCell, rc::Rc, cmp::min, mem};
 use crate::fs::block::Block;
 use crate::fs::cache::Cache;
 use crate::fs::free_map::Freemap;
@@ -13,7 +11,7 @@ const INODE_SIGNATURE: u32 = 0x494e4f44;
 pub struct InodeList<'b, 'a: 'b> {
   block: &'b Block<'a>,
   cache: &'b Cache,
-  inner: Vec<RefCell<MemoryInode>>
+  inner: Vec<Rc<RefCell<MemoryInode>>>
 }
 
 pub struct MemoryInode {
@@ -24,7 +22,7 @@ pub struct MemoryInode {
   data: DiskInode
 }
 
-struct DiskInode {
+pub struct DiskInode {
   direct_blocks: [BlockSectorT; DIRECT_BLOCKS_COUNT as usize],
   indirect_block: BlockSectorT,
   doubly_indirect_block: BlockSectorT,
@@ -52,33 +50,35 @@ impl<'b, 'a: 'b> InodeList<'b,'a> {
     }
   }
 
-  pub fn open_inode(&mut self, sector: BlockSectorT) -> Result<RefMut<MemoryInode>, FsErrors> {
+  pub fn open_inode(&mut self, sector: BlockSectorT) -> Result<Rc<RefCell<MemoryInode>>, FsErrors> {
     return match self.inner.iter().find(|memory_inode| { memory_inode.borrow().sector == sector }) {
       Some(memory_inode) => {
-        Ok(memory_inode.borrow_mut())
+        Ok(memory_inode.clone())
       },
       None => {
         let memory_inode = MemoryInode::new(self.block, self.cache, sector)?;
-        let celled_inode = RefCell::new(memory_inode);
+        let celled_inode = Rc::new(RefCell::new(memory_inode));
+        let return_inode = celled_inode.clone();
         self.inner.push(celled_inode);
 
-        Ok(celled_inode.borrow_mut())
+        Ok(return_inode)
       }
     }
   }
 
-  pub fn close_inode(&mut self, inode: RefMut<MemoryInode>) -> Result<(), FsErrors> {
-    let close_entry = { (inode.open_cnt -= 1) == 0 };
+  pub fn close_inode(&mut self, inode: Rc<RefCell<MemoryInode>>) -> Result<(), FsErrors> {
+    let mut memory_inode = inode.borrow_mut();
+    let close_inode =  { memory_inode.open_cnt -= 1; memory_inode.open_cnt == 0 };
 
-    if inode.removed {
-      free_map_release(inode.sector, 1);
+    if memory_inode.removed {
+      free_map_release(memory_inode.sector, 1);
       inode.deallocate(self.cache, self.block)?;
     }
 
-    drop(inode);
+    drop(memory_inode);
 
-    if close_entry {
-      return match self.inner.iter().position(|inode| inode.borrow().open_cnt == 0) {
+    if close_inode {
+      return match self.inner.iter().position(|inner_inode| Rc::ptr_eq(inner_inode, inode)) {
         Some(index) => {
           self.inner.remove(index);
           Ok(())
@@ -110,19 +110,19 @@ impl MemoryInode {
 
   fn byte_to_sector(&self, cache: &Cache, block: &Block, pos: u32) -> Result<BlockSectorT, FsErrors> {
     if pos >= self.data.length {
-      Err(FsErrors::PastEOF())
+      return Err(FsErrors::PastEOF())
     }
 
     let index = pos / BLOCK_SECTOR_SIZE;
     self.data.index_to_sector(cache, block, index)
   }
 
-  pub fn read_at(&mut self, cache: &Cache, block: &Block, buffer: &mut [u8], length: u32, offset: u32) -> Result<u32, FsErrors> {
+  pub fn read_at(&mut self, cache: &Cache, block: &Block, buffer: &mut [u8], mut length: u32, mut offset: u32) -> Result<u32, FsErrors> {
     let mut bytes_read = 0u32;
     let mut bounce = None;
 
     while length > 0 {
-      let sector_index = self.byte_to_sector(cache, block, offset);
+      let sector_index = self.byte_to_sector(cache, block, offset)?;
       let sector_offset = offset % BLOCK_SECTOR_SIZE;
 
       let remaining_inode = self.get_length() - offset;
@@ -152,15 +152,15 @@ impl MemoryInode {
     Ok(bytes_read)
   }
 
-  pub fn write_at(&mut self, cache: &Cache, block: &Block, freemap: &Freemap, buffer: &[u8], length: u32, offset: u32) -> Result<u32, FsErrors> {
+  pub fn write_at(&mut self, cache: &Cache, block: &Block, freemap: &Freemap, buffer: &[u8], mut length: u32, mut offset: u32) -> Result<u32, FsErrors> {
     let mut bytes_written = 0u32;
     let mut bounce = None;
 
     if self.deny_write_count { todo!("Return an error or just 0 bytes written?!") }
 
-    if let Err(FsErrors::PastEOF) = self.byte_to_sector(cache, block, offset + length - 1) {
+    if let Err(FsErrors::PastEOF()) = self.byte_to_sector(cache, block, offset + length - 1) {
       self.data.reserve(cache, block, freemap, offset + length)?;
-      self.data.length = offset + size;
+      self.data.length = offset + length;
 
       cache.write_cache_from_buffer(block, self.sector, self.data.to_bytes())?;
     }
@@ -258,7 +258,7 @@ impl MemoryInode {
     {
       limit = min(num_sectors, INDIRECT_BLOCKS_PER_SECTOR);
       if limit <= 0 {
-        assert!(num_sectors == 0);
+        assert_eq!(num_sectors, 0);
         return Ok(data_sectors);
       }
 
@@ -280,7 +280,7 @@ impl MemoryInode {
     {
       limit = min(num_sectors, INDIRECT_BLOCKS_PER_SECTOR * INDIRECT_BLOCKS_PER_SECTOR);
       if limit <= 0 {
-        assert!(num_sectors == 0);
+        assert_eq!(num_sectors, 0);
         return Ok(data_sectors);
       }
 
@@ -311,7 +311,7 @@ impl MemoryInode {
       num_sectors -= limit;
     }
 
-    assert!(num_sectors == 0);
+    assert_eq!(num_sectors, 0);
     Ok(data_sectors)
   }
 
@@ -328,15 +328,15 @@ impl MemoryInode {
     //Direct Blocks
     limit = min(num_sectors, DIRECT_BLOCKS_COUNT);
     for i in 0..limit {
-      free_map_release(self.data.direct_blocks[i as uize], 1);
+      free_map_release(self.data.direct_blocks[i as usize], 1);
     }
     num_sectors -= limit;
 
     //Single Indirect Block
     limit = min(num_sectors, INDIRECT_BLOCKS_PER_SECTOR);
     if limit <= 0 {
-      assert!(num_sectors == 0);
-      Ok(())
+      assert_eq!(num_sectors, 0);
+      return Ok(())
     }
     Self::deallocate_indirect(cache, block, self.data.indirect_block, limit, 1)?;
     num_sectors -= limit;
@@ -344,22 +344,22 @@ impl MemoryInode {
     //Doubly indirect Blocks
     limit = min(num_sectors, INDIRECT_BLOCKS_PER_SECTOR * INDIRECT_BLOCKS_PER_SECTOR);
     if limit <= 0 {
-      assert!(num_sectors == 0);
-      Ok(())
+      assert_eq!(num_sectors, 0);
+      return Ok(())
     }
     Self::deallocate_indirect(cache, block, self.data.doubly_indirect_block, limit, 2)?;
     num_sectors -= limit;
 
-    assert!(num_sectors == 0);
+    assert_eq!(num_sectors, 0);
     Ok(())
   }
 
-  fn deallocate_indirect(cache: &Cache, block: &Block, entry: BlockSectorT, num_sectors: u32, lvl: u32) -> Result<(), FsErrors> {
+  fn deallocate_indirect(cache: &Cache, block: &Block, entry: BlockSectorT, mut num_sectors: u32, lvl: u32) -> Result<(), FsErrors> {
     assert!(lvl <= 2);
 
     if lvl == 0 {
       free_map_release(entry, 1);
-      Ok(())
+      return Ok(())
     }
 
     let mut buffer = [0u8; BLOCK_SECTOR_SIZE as usize];
@@ -376,7 +376,7 @@ impl MemoryInode {
       num_sectors -= subsize
     }
 
-    assert!(num_sectors == 0);
+    assert_eq!(num_sectors, 0);
     free_map_release(entry, 1);
     Ok(())
   }
@@ -403,14 +403,14 @@ impl DiskInode {
     Ok(())
   }
 
-  fn to_bytes(&self) -> &[u8; 512] {
+  fn to_bytes(&self) -> &[u8] {
     assert_eq!(mem::size_of::<Self>(), 512);
 
     let bytes = unsafe {
       std::slice::from_raw_parts((self as *const Self) as *const u8, mem::size_of::<Self>())
     };
 
-    assert!(bytes.len(), 512);
+    assert_eq!(bytes.len(), 512);
     bytes
   }
 
@@ -458,14 +458,14 @@ impl DiskInode {
     self.reserve(cache, block, freemap, self.length)
   }
 
-  fn reserve(&mut self, cache: &Cache, block: &Block, freemap: &Freemap, length: u32) -> Result<(), FsErrors> {
+  fn reserve(&mut self, cache: &Cache, block: &Block, freemap: &mut Freemap, length: u32) -> Result<(), FsErrors> {
     const EMPTY_BUFFER: [u8; 512] = [0u8; BLOCK_SECTOR_SIZE as usize];
 
     if length < 0 {
       todo!("Return err")
     }
 
-    let num_sectors = bytes_to_sectors(length);
+    let mut num_sectors = bytes_to_sectors(length);
     let limit;
 
     //Direct Blocks
@@ -483,7 +483,7 @@ impl DiskInode {
       num_sectors -= limit;
     }
 
-    if num_sectors == 0 { Ok(()) }
+    if num_sectors == 0 { return Ok(()) }
 
     //Indirect Block
     {
@@ -493,7 +493,7 @@ impl DiskInode {
       num_sectors -= limit;
     }
 
-    if num_sectors == 0 { Ok(()) }
+    if num_sectors == 0 { return Ok(()) }
 
     //Doubly Indirect Block
     {
@@ -503,18 +503,18 @@ impl DiskInode {
       num_sectors -= limit;
     }
 
-    assert!(num_sectors == 0);
+    assert_eq!(num_sectors, 0);
     Ok(())
   }
 
-  fn reserve_indirect(cache: &Cache, block: &Block, freemap: &Freemap, num_sectors: u32, lvl: u32) -> Result<BlockSectorT, FsErrors> {
+  fn reserve_indirect(cache: &Cache, block: &Block, freemap: &mut Freemap, mut num_sectors: u32, lvl: u32) -> Result<BlockSectorT, FsErrors> {
     const EMPTY_BUFFER: [u8; 512] = [0u8; BLOCK_SECTOR_SIZE as usize];
     assert!(lvl <= 2);
 
     if lvl == 0 {
       let index = freemap.allocate(1)?;
       cache.write_cache_from_buffer(block, index, &EMPTY_BUFFER)?;
-      Ok(index)
+      return Ok(index)
     }
 
     let index = freemap.allocate(cnt)?;
@@ -535,8 +535,8 @@ impl DiskInode {
       num_sectors -= subsize;
     }
 
-    assert!(num_sectors == 0);
-    cache.write_cache_from_buffer(block, index, &indirect_block.blocks)?;
+    assert_eq!(num_sectors, 0);
+    cache.write_cache_from_buffer(block, index, indirect_block.to_bytes())?;
     Ok(index)
   }
 }
@@ -554,5 +554,14 @@ impl IndirectBlockSector {
         .unwrap()
       }
     }
+  }
+
+  fn to_bytes(&self) -> &[u8] {
+    let bytes = unsafe {
+      std::slice::from_raw_parts((self as *const Self) as *const u8, mem::size_of::<Self>())
+    };
+
+    assert_eq!(bytes.len(), 512);
+    bytes
   }
 }

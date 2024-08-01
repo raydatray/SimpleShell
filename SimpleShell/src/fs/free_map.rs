@@ -1,9 +1,13 @@
+use std::cell::{Cell, RefCell};
 use crate::fs::{bitmap::Bitmap, inode_dup::MemoryInode};
+use crate::fs::block::Block;
+use crate::fs::cache::Cache;
+use crate::fs::inode_dup::DiskInode;
 use super::{block::BlockSectorT, file::File, file_sys::{FREE_MAP_SECTOR, ROOT_DIR_SECTOR}, fs_errors::FsErrors, inode_dup::InodeList};
 
 pub struct Freemap {
-  inner: Bitmap,
-  file: Option<File>
+  inner: RefCell<Bitmap>,
+  file: Cell<Option<File>>
 }
 
 impl Freemap {
@@ -13,23 +17,43 @@ impl Freemap {
     bitmap.mark(ROOT_DIR_SECTOR);
 
     Self {
-      inner: bitmap,
-      file: None
+      inner: RefCell::new(bitmap),
+      file: Cell::new(None)
     }
   }
 
   fn num_free_sectors(&self) -> u32 {
-    self.inner.count(0, self.inner.get_bitmap_size(), false)
+    let bitmap = self.inner.borrow();
+    bitmap.count(0, bitmap.get_size(), false)
   }
 
   ///Allocates CNT consecutive sectors, and returns the first sector if successful
-  pub fn allocate(&mut self, cnt: u32) -> Result<BlockSectorT, FsErrors> {
+  pub fn allocate(&self, cnt: u32) -> Result<BlockSectorT, FsErrors> {
+    let mut bitmap = self.inner.borrow_mut();
+    let sector = bitmap.scan_and_flip(0, cnt, false)?;
+
+    drop(bitmap);
+    let bitmap = self.inner.borrow()
+
+    if let Some(file) = self.file.get() {
+      match bitmap.write_to_file(&self, )
+    }
+
+
+
+
     let sector = self.inner.scan_and_flip(0, cnt, false)?;
 
-    self.inner.
-    self.inner.set_multiple(sector, cnt, false);
-
-
+    if let Some(file) = &mut self.file {
+      match self.inner.write_to_file(&mut self, file) {
+        Ok(_) => { return Ok(sector) },
+        Err(_) => {
+          self.inner.set_multiple(sector, cnt, false);
+          return Err(todo!())
+        }
+      }
+    }
+    Err(todo!())
   }
 
   pub fn release(&mut self, sector: BlockSectorT, cnt: u32) -> Result<(), FsErrors> {
@@ -37,32 +61,37 @@ impl Freemap {
 
     self.inner.set_multiple(sector, cnt, false);
 
-    if let Some(file) = self.file {
-      return self.inner.write_to_file(&mut self, &mut file)
+    if let Some(file) = &mut self.file {
+      self.inner.write_to_file(&mut self, file)?;
+      Ok(())
     } else {
       todo!("Err")
     }
   }
 
-  fn open_from_file(&mut self, inode_list: &mut InodeList) {
+  fn open_from_file(&mut self, inode_list: &mut InodeList) -> Result<(), FsErrors> {
     assert!(self.file.is_none());
 
-    let mut free_map_file = File::open(inode_list.open_inode(FREE_MAP_SECTOR));
-    self.file = Some(free_map_file);
-    self.inner.read_from_file(&mut free_map_file);
-
+    let freemap_inode = inode_list.open_inode(FREE_MAP_SECTOR)?;
+    let mut freemap_file = File::open(freemap_inode);
+    self.inner.read_from_file(&mut freemap_file)?;
+    self.file = Some(freemap_file);
+    Ok(())
   }
 
-  pub fn close(&self, inode_list: &mut InodeList) -> Result<(), FsErrors>{
-    return match self.file {
-      Some(mut file) => {
-        file.close(inode_list)
-      },
-      None => Err(todo!())
+  pub fn close(&mut self, inode_list: &mut InodeList) -> Result<(), FsErrors> {
+    if let Some(mut file) = self.file.take(){
+      file.close(inode_list)
+    } else {
+      Err(todo!())
     }
   }
 
-  pub fn create_on_disk(&self, cache: &Cache, block: &Block) {
-    let inode = MemoryInode::new(block, cache)
+  pub fn create_on_disk(&mut self, cache: &Cache, block: &Block, inode_list: &mut InodeList) -> Result<(), FsErrors> {
+    let _ = DiskInode::new(block, cache, &self, FREE_MAP_SECTOR, self.inner.get_size(), false)?;
+    let freemap_inode =  inode_list.open_inode(FREE_MAP_SECTOR)?;
+    let mut freemap_file = File::open(freemap_inode);
+    self.inner.write_to_file(&mut self, &mut freemap_file)?;
+    Ok(())
   }
 }

@@ -1,4 +1,5 @@
 use std::cell::{RefCell, RefMut};
+use std::rc::Rc;
 use super::{free_map::Freemap, fs_errors::FsErrors, inode_dup::{InodeList, MemoryInode}};
 
 pub struct FileTable {
@@ -12,7 +13,7 @@ struct FileTableEntry {
 }
 
 pub struct File {
-  inode: RefMut<MemoryInode>,
+  inode: Option<Rc<RefCell<MemoryInode>>>,
   position: u32,
   deny_write: bool
 }
@@ -45,9 +46,9 @@ impl FileTableEntry {
 }
 
 impl File {
-  pub fn open(inode: RefMut<MemoryInode>) -> Self {
+  pub fn open(inode: Rc<RefCell<MemoryInode>>)-> Self {
     Self {
-      inode,
+      inode: Some(inode),
       position: 0u32,
       deny_write: false
     }
@@ -55,12 +56,20 @@ impl File {
 
   pub fn close(&mut self, inode_list: &mut InodeList) -> Result<(), FsErrors>{
     self.file_allow_write();
-    inode_list.close_inode(inode)
-    //free(self)???
+
+    if let None = self.inode {
+      return Err(todo!())
+    }
+
+    inode_list.close_inode(self.inode.take())?;
+    //We're supposed to deallocate the file here too....
   }
 
-  fn get_inode(&self) -> RefMut<MemoryInode> {
-    self.inode
+  fn get_inode(&self) -> Rc<RefCell<MemoryInode>> {
+    return match self.inode {
+      Some(inode) => inode.clone(),
+      None => todo!("Some error")
+    }
   }
 
   pub fn read(&mut self, buffer: &mut [u8], size: u32) -> Result<u32, FsErrors> {
@@ -103,10 +112,10 @@ impl File {
 
   ///From the start of the file
   fn file_seek(&mut self, new_pos: u32) {
-    self.offset = new_pos
+    self.position = new_pos
   }
 
   fn file_tell(&self) -> u32 {
-    self.offset
+    self.position
   }
 }
