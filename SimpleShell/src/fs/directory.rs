@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::{mem, cell::RefCell, path::Path};
 use std::mem;
 use std::rc::Rc;
 use bytemuck::Pod;
@@ -29,21 +29,31 @@ struct DirectoryEntry {
   in_use: bool
 }
 
+pub fn split_path_filename(path: &str) -> (&str, &str)  {
+  let path = Path::new(path);
+
+  let directory = path.parent().and_then(|p| p.to_str()).unwrap_or("");
+
+  let filename = path.file_name().and_then(|f| f.to_str()).unwrap_or("");
+
+  (directory, filename)
+}
+
 impl Directory {
   pub fn new(sector: BlockSectorT, entry_cnt: u32) -> Result<(), FsErrors> {
     DiskInode::new(block, cache, freemap, sector, directory_entry_size * entry_cnt, true)?;
 
   }
 
-  pub fn open_root(mut state: State) -> Result<Rc<RefCell<Directory>>, FsErrors> {
-    match state.get_cwd() {
+  pub fn open_root(state: &mut State) -> Result<&mut Directory, FsErrors> {
+    match state.cwd {
       Some(directory) => {
-        return Ok(directory)
+        return Ok(&mut directory)
       },
       None => {
         let cwd = Self::open(state.inode_list.open_inode(ROOT_DIR_SECTOR)?);
-        return Ok(Rc::new(RefCell::new(cwd)));
-        todo!("Set state cwd to this new cwd")
+        state.cwd = Some(cwd);
+        return Ok(&mut cwd);
       }
     }
   }
@@ -78,7 +88,15 @@ impl Directory {
     }
   }
 
-  fn lookup
+  pub fn close(&self) -> Result<(), FsErrors> {
+    todo!();
+  }
+
+  pub fn lookup() -> Result<Rc<RefCell<MemoryInode>>, FsErrors> {todo!()}
+
+  pub fn get_inode(&self) -> Rc<RefCell<MemoryInode>> {
+    self.inode.clone()
+  }
 
   pub fn is_empty(&self, state: State) -> bool {
     let mut buffer = [0u8; DIRECTORY_ENTRY_SIZE as usize];
@@ -113,7 +131,7 @@ impl Directory {
     }
   }
 
-  pub fn add(&mut self, state: State, name: String, inode_sector: BlockSectorT, is_dir: bool) -> Result<(), FsErrors> {
+  pub fn add(&mut self, state: &mut State, name: &str, inode_sector: BlockSectorT, is_dir: bool) -> Result<(), FsErrors> {
 
   }
   pub fn remove(&mut self, state: State, pattern: String) -> Result<(), FsErrors> {

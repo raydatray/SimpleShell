@@ -5,7 +5,7 @@ mod partition;
 mod bitmap;
 mod cache;
 mod file;
-mod inode_dup;
+mod inode;
 mod free_map;
 mod file_sys;
 mod directory;

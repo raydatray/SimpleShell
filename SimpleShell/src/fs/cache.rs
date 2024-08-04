@@ -27,7 +27,7 @@ impl Cache {
     }
   }
 
-  pub fn close_cache(&self, block: &Block) -> Result<(), FsErrors> {
+  pub fn close(&self, block: &Block) -> Result<(), FsErrors> {
     for entry in self.cache.iter(){
       let mut entry = entry.borrow_mut();
       if entry.occupied {

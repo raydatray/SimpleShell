@@ -2,6 +2,7 @@ use std::{cell::RefCell, rc::Rc, cmp::min, mem};
 use crate::fs::block::Block;
 use crate::fs::cache::Cache;
 use crate::fs::free_map::Freemap;
+use crate::fs::file_sys::State;
 use super::{block::{BlockSectorT, BLOCK_SECTOR_SIZE}, fs_errors::FsErrors, free_map::free_map_release};
 
 const DIRECT_BLOCKS_COUNT: u32 = 123u32;
@@ -213,7 +214,7 @@ impl MemoryInode {
     self.data.is_directory
   }
 
-  fn is_removed(&self) -> bool {
+  pub fn is_removed(&self) -> bool {
     self.removed
   }
 
@@ -384,7 +385,7 @@ impl DiskInode {
     assert_eq!(disk_inode_size, BLOCK_SECTOR_SIZE as usize, "Disk inodes were not {} bytes in size, actual size: {}", BLOCK_SECTOR_SIZE, disk_inode_size);
   };
 
-  pub fn new(block: &Block, cache: &Cache, freemap: &Freemap, sector: BlockSectorT, length: u32, is_directory: bool) -> Result<(), FsErrors>{
+  pub fn new(state: &mut State, sector: BlockSectorT, length: u32, is_directory: bool) -> Result<(), FsErrors>{
     let mut disk_inode = Self {
       direct_blocks: [0u32; DIRECT_BLOCKS_COUNT as usize],
       indirect_block: 0u32,
@@ -394,8 +395,8 @@ impl DiskInode {
       signature: INODE_SIGNATURE
     };
 
-    disk_inode.allocate(cache, block, freemap)?;
-    cache.write_cache_from_buffer(block, sector, disk_inode.to_bytes())?;
+    disk_inode.allocate(&state.block, &state.cache, &mut state.freemap)?;
+    state.cache.write_cache_from_buffer(&state.block, sector, disk_inode.to_bytes())?;
     Ok(())
   }
 
@@ -450,7 +451,7 @@ impl DiskInode {
     todo!("Out of bounds error");
   }
 
-  pub fn allocate(&mut self, cache: &Cache, block: &Block, freemap: &Freemap) -> Result<(), FsErrors> {
+  pub fn allocate(&mut self, block: &Block, cache: &Cache, freemap: &mut Freemap) -> Result<(), FsErrors> {
     self.reserve(cache, block, freemap, self.length)
   }
 

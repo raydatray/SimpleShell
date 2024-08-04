@@ -12,7 +12,7 @@ pub struct Freemap {
 
 impl Freemap {
   pub fn new(block_size: u32) -> Self {
-    let mut bitmap = Bitmap::new(block_size - 1);
+    let bitmap = Bitmap::new(block_size - 1);
     bitmap.mark(FREE_MAP_SECTOR);
     bitmap.mark(ROOT_DIR_SECTOR);
 
@@ -22,7 +22,7 @@ impl Freemap {
     }
   }
 
-  fn num_free_sectors(&self) -> u32 {
+  pub fn num_free_sectors(&self) -> u32 {
     let bitmap = self.inner.borrow();
     bitmap.count(0, bitmap.get_size(), false)
   }
@@ -56,7 +56,7 @@ impl Freemap {
     }
   }
 
-  fn open_from_file(&mut self, inode_list: &mut InodeList) -> Result<(), FsErrors> {
+  pub fn open_from_file(&mut self, inode_list: &mut InodeList) -> Result<(), FsErrors> {
     assert!(self.file.is_none());
 
     let freemap_inode = inode_list.open_inode(FREE_MAP_SECTOR)?;
@@ -74,7 +74,11 @@ impl Freemap {
     }
   }
 
-  pub fn create_on_disk(&mut self, cache: &Cache, block: &Block, inode_list: &mut InodeList) -> Result<(), FsErrors> {
+  ///Creates a new FREEMAP on the provided BLOCK. Only used when formatting the filesystem
+  ///
+  ///Existing files will not be overwritten, however they will be all marked as FREE
+  ///FREE_MAP_SECTOR (Sector 0) will be overwritten
+  pub fn create_on_disk(&mut self, block: &Block, cache: &Cache, inodes: &mut InodeList) -> Result<(), FsErrors> {
     let _ = DiskInode::new(block, cache, &self, FREE_MAP_SECTOR, self.inner.get_size(), false)?;
     let freemap_inode =  inode_list.open_inode(FREE_MAP_SECTOR)?;
     let mut freemap_file = File::open(freemap_inode);

@@ -43,7 +43,13 @@ impl FileTable {
     })
   }
 
+  pub fn close(&self, inode_list: &mut InodeList) -> Result<(), FsErrors> {
+    self.inner.iter().for_each(|entry| {
+      entry.file.borrow_mut().close(inode_list)?;
+    });
 
+    Ok(())
+  }
 }
 
 impl FileTableEntry {
@@ -56,7 +62,7 @@ impl FileTableEntry {
 }
 
 impl File {
-  pub fn open(inode: Rc<RefCell<MemoryInode>>)-> Self {
+  pub fn open(inode: Rc<RefCell<MemoryInode>>) -> Self {
     Self {
       inode: Some(inode),
       position: 0u32,
@@ -65,7 +71,7 @@ impl File {
   }
 
   pub fn close(&mut self, inode_list: &mut InodeList) -> Result<(), FsErrors>{
-    self.file_allow_write();
+    self.allow_write();
 
     if let None = self.inode {
       return Err(todo!())
