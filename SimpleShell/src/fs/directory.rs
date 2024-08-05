@@ -1,17 +1,13 @@
-use std::{mem, cell::RefCell, path::Path};
-use std::mem;
-use std::rc::Rc;
-use bytemuck::Pod;
-use crate::fs::bitmap::byte_cnt;
-use crate::fs::block::{Block, BlockSectorT};
+use std::{mem, rc::Rc, cell::RefCell, path::Path};
+use bytemuck::{bytes_of, from_bytes, Pod, Zeroable};
+use crate::fs::block::BlockSectorT;
 use crate::fs::file_sys::{ROOT_DIR_SECTOR, State};
 use crate::fs::fs_errors::FsErrors;
-use crate::fs::inode_dup::{DiskInode, InodeList, MemoryInode};
+use crate::fs::inode::{DiskInode, MemoryInode};
 
-const NAME_MAX: usize = 30;
-pub(crate) const DIRECTORY_ENTRY_SIZE: u32 = {
+const NAME_MAX: usize = 31; //30 bytes + 1 byte of null terminator
+const DIRECTORY_ENTRY_SIZE: u32 = {
   let directory_entry_size = mem::size_of::<DirectoryEntry>();
-  todo!("Assert its the right size or smthn");
   directory_entry_size as u32
 };
 
@@ -21,50 +17,73 @@ pub struct Directory {
   open_cnt: u32 //Redundant due to RC counting?
 }
 
-#[derive(Pod)]
+#[derive(Copy, Clone, Pod, Zeroable)]
 #[repr(C)]
 struct DirectoryEntry {
   inode_sector: BlockSectorT,
-  name: [u8; NAME_MAX + 1],
-  in_use: bool
+  name: [u8; NAME_MAX],
+  in_use: u8 // This is really a bool, but we can't POD that. Use 0 and 1
 }
 
-pub fn split_path_filename(path: &str) -> (&str, &str)  {
-  let path = Path::new(path);
+///Takes a PATH, and outputs a tuple DIRECTORY, FILE_NAME
+///
+///Ex.
+///"/home/user/documents/file.txt" -> "/home/user/documents/, file.txt"
+///
+///"file.txt" -> "", "file.txt"
+pub fn split_path_filename(path: &str) -> (&str, &str) {
+    let path = path.trim_end_matches('/');
 
-  let directory = path.parent().and_then(|p| p.to_str()).unwrap_or("");
-
-  let filename = path.file_name().and_then(|f| f.to_str()).unwrap_or("");
-
-  (directory, filename)
+    match path.rfind('/') {
+        Some(index) => (&path[..=index], &path[index + 1..]),
+        None => ("", path),
+    }
 }
 
 impl Directory {
-  pub fn new(sector: BlockSectorT, entry_cnt: u32) -> Result<(), FsErrors> {
-    DiskInode::new(block, cache, freemap, sector, directory_entry_size * entry_cnt, true)?;
+  pub fn new(state: &mut State, sector: BlockSectorT, entry_cnt: u32) -> Result<(), FsErrors> {
+    DiskInode::new(state, sector, DIRECTORY_ENTRY_SIZE * entry_cnt, true)?;
 
+    let sector_inode = state.inode_list.open_inode(sector)?;
+    let dir = Self::open(sector_inode.clone());
+    let dir_entry = DirectoryEntry::new(sector);
+
+    if DIRECTORY_ENTRY_SIZE  != sector_inode.borrow_mut().write_at(state, bytes_of(&dir_entry), DIRECTORY_ENTRY_SIZE, 0)? {
+      dir.close()?;
+      return Err(todo!());
+    }
+    dir.close()
   }
 
-  pub fn open_root(state: &mut State) -> Result<&mut Directory, FsErrors> {
-    match state.cwd {
+  //This is really scuffed, any type that is wrapped within an RC probably doesn't need the open_cnt
+  //In C implementation we use the open_cnt to keep track of open pointers to deallocate when 0
+  //But RC already does this
+  pub fn open_root(state: &mut State) -> Result<Rc<RefCell<Directory>>, FsErrors> {
+    match &state.cwd {
       Some(directory) => {
-        return Ok(&mut directory)
+        return Ok(directory.clone())
       },
       None => {
         let cwd = Self::open(state.inode_list.open_inode(ROOT_DIR_SECTOR)?);
-        state.cwd = Some(cwd);
-        return Ok(&mut cwd);
+
+        let wrapped_cwd = Rc::new(RefCell::new(cwd));
+        wrapped_cwd.borrow_mut().open_cnt += 1;
+
+        let return_dir = wrapped_cwd.clone();
+        state.cwd = Some(wrapped_cwd);
+
+        return Ok(return_dir);
       }
     }
   }
 
-  pub fn open_path(state: State, path: &str) -> Result<Rc<RefCell<Directory>>, FsErrors>{
+  pub fn open_path(state: &mut State, path: &str) -> Result<Rc<RefCell<Directory>>, FsErrors>{
     let mut curr = if path.starts_with("/") {
       Directory::open_root(state)?
     } else {
-      match state.get_cwd() {
+      match state.cwd {
         Some(cwd) => {
-          cwd
+          cwd.clone()
         },
         None => {
           Directory::open_root(state)?
@@ -92,7 +111,44 @@ impl Directory {
     todo!();
   }
 
-  pub fn lookup() -> Result<Rc<RefCell<MemoryInode>>, FsErrors> {todo!()}
+  pub fn search(&self, state: &mut State, name: &str) -> Result<Rc<RefCell<MemoryInode>>, FsErrors> {
+    let mut buffer = [0u8; DIRECTORY_ENTRY_SIZE as usize];
+
+    match name {
+      "." => {
+        return Ok(self.inode.clone())
+      },
+      ".."=> {
+        self.inode.borrow_mut().read_at(&state.block, &state.cache, &mut buffer, DIRECTORY_ENTRY_SIZE, 0)?;
+        let entry: &DirectoryEntry = bytemuck::from_bytes(&buffer);
+        return state.inode_list.open_inode(entry.inode_sector)
+      },
+      _ => {
+        let (directory_entry, offset) = self.lookup(state, name)?;
+        state.inode_list.open_inode(directory_entry.inode_sector)
+      }
+    }
+  }
+
+  ///Searches DIRECTORY for a file with given NAME
+  ///
+  ///Returns the ENTRY containing the target file, and the OFFSET of the entry
+  ///CHECK IF YOU ACTUALLY NEED TO RETURN OFFSET
+  fn lookup(&self, state: &State, name: &str) -> Result<(DirectoryEntry, u32), FsErrors> {
+    let mut offset = DIRECTORY_ENTRY_SIZE;
+    let mut buffer = [0u8; DIRECTORY_ENTRY_SIZE as usize];
+
+    while self.inode.borrow_mut().read_at(&state.block, &state.cache, &mut buffer, DIRECTORY_ENTRY_SIZE, offset)? == DIRECTORY_ENTRY_SIZE {
+      let entry = from_bytes::<DirectoryEntry>(&buffer).to_owned();
+      let entry_name: &str = &entry.name_to_string();
+
+      if entry.in_use == 1u8 && name == entry_name {
+        return Ok((entry, offset));
+      }
+      offset += DIRECTORY_ENTRY_SIZE;
+    }
+    return Err(todo!())
+  }
 
   pub fn get_inode(&self) -> Rc<RefCell<MemoryInode>> {
     self.inode.clone()
@@ -113,28 +169,10 @@ impl Directory {
     true
   }
 
-  pub fn search_for_file(&self, state: State, name: &str) -> Result<Rc<RefCell<MemoryInode>>, FsErrors> {
-    let mut buffer = [0u8; DIRECTORY_ENTRY_SIZE as usize];
-
-    match name {
-      "." => {
-        return Ok(self.inode.clone())
-      },
-      ".."=> {
-        self.inode.borrow_mut().read_at(state, &mut buffer, DIRECTORY_ENTRY_SIZE, 0)?;
-        let entry: &DirectoryEntry = bytemuck::from_bytes(&buffer);
-        return state.inode_list.open_inode(entry.inode_sector)
-      },
-      _ => {
-        match
-      }
-    }
-  }
-
   pub fn add(&mut self, state: &mut State, name: &str, inode_sector: BlockSectorT, is_dir: bool) -> Result<(), FsErrors> {
 
   }
-  pub fn remove(&mut self, state: State, pattern: String) -> Result<(), FsErrors> {
+  pub fn remove(&mut self, state: &mut State, pattern: &str) -> Result<(), FsErrors> {
 
   }
 
@@ -169,7 +207,14 @@ impl Directory {
 }
 
 impl DirectoryEntry {
-  fn name_to_string(&self) -> String {
-    String::from_utf8_lossy(&self.name).to_string()
+  fn new(inode_sector: BlockSectorT) -> Self {
+    Self {
+      inode_sector,
+      name: [0u8; NAME_MAX],
+      in_use: 1u8 //"True"
+    }
+  }
+  fn name_to_string(&self) -> &str {
+    std::str::from_utf8(&self.name).expect("Invalid UTF-8")
   }
 }

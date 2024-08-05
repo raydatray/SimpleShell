@@ -1,8 +1,6 @@
-use std::cell::{Cell, RefCell};
 use crate::fs::{bitmap::Bitmap, inode_dup::MemoryInode};
-use crate::fs::block::Block;
-use crate::fs::cache::Cache;
-use crate::fs::inode_dup::DiskInode;
+use crate::fs::inode::DiskInode;
+use crate::fs::file_sys::State;
 use super::{block::BlockSectorT, file::File, file_sys::{FREE_MAP_SECTOR, ROOT_DIR_SECTOR}, fs_errors::FsErrors, inode_dup::InodeList};
 
 pub struct Freemap {
@@ -78,11 +76,13 @@ impl Freemap {
   ///
   ///Existing files will not be overwritten, however they will be all marked as FREE
   ///FREE_MAP_SECTOR (Sector 0) will be overwritten
-  pub fn create_on_disk(&mut self, block: &Block, cache: &Cache, inodes: &mut InodeList) -> Result<(), FsErrors> {
-    let _ = DiskInode::new(block, cache, &self, FREE_MAP_SECTOR, self.inner.get_size(), false)?;
-    let freemap_inode =  inode_list.open_inode(FREE_MAP_SECTOR)?;
+  pub fn create_on_disk(state: &mut State) -> Result<(), FsErrors> {
+    let size = state.freemap.inner.get_size();
+    let _ = DiskInode::new(state, FREE_MAP_SECTOR, size, false)?;
+    let freemap_inode =  state.inode_list.open_inode(FREE_MAP_SECTOR)?;
     let mut freemap_file = File::open(freemap_inode);
-    self.inner.write_to_file(&mut self, &mut freemap_file)?;
+
+    state.freemap.inner.write_to_file(&mut state.freemap, &mut freemap_file)?;
     Ok(())
   }
 }

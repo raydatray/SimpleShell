@@ -22,42 +22,39 @@ pub struct State<'file_sys> {
   pub freemap: Freemap,
   pub inode_list: InodeList,
   pub file_table: FileTable,
-  pub cwd: Option<Directory>,
+  pub cwd: Option<Rc<RefCell<Directory>>>
 }
 
 impl <'file_sys> State <'file_sys> {
+  ///DONE, check cwd init
   pub fn file_sys_init(block: Block, format: bool) -> Result<Self, FsErrors> {
-    //Inode, freemap, cache, format, open freemap
-    let mut inode_list = InodeList::new();
-    let mut freemap = Freemap::new(block.get_block_size());
-    let cache = Cache::new();
+    let mut state = Self {
+      block,
+      cache: Cache::new(),
+      freemap: Freemap::new(block.get_block_size()),
+      inode_list: InodeList::new(),
+      file_table: FileTable::new(),
+      cwd: None
+    };
 
     if format {
-      todo!()
-      Self::format()
+      Self::format(&mut state)?;
     }
 
-    freemap.open_from_file(&mut inode_list)?;
-    println!("Number of free sectors: {}", freemap.num_free_sectors());
+    state.freemap.open_from_file(&mut state.inode_list)?;
+    println!("Number of free sectors: {}", state.freemap.num_free_sectors());
 
-    let file_table = FileTable::new();
-
-    Ok(
-      Self {
-        block,
-        cache,
-        freemap,
-        inode_list,
-        file_table,
-        cwd: None //Sus, where do we get this from???
-      }
-    )
+    Ok(state)
   }
 
-  fn format(freemap: &) {
-
+  fn format(&mut self) -> Result<(), FsErrors> {
+    println!("Formatting file system...");
+    Freemap::create_on_disk(self)?;
+    Directory::new(self, ROOT_DIR_SECTOR, MAX_FILES_PER_DIRECTORY)?;
+    self.freemap.close(&mut self.inode_list)
   }
 
+  ///DONE
   pub fn file_sys_close(&mut self) -> Result<(), FsErrors> {
     self.freemap.close(&mut self.inode_list)?;
     self.cache.close(&self.block)?;
@@ -82,6 +79,7 @@ impl <'file_sys> State <'file_sys> {
         return Err(todo!());
       }
     }
+    dir.close()?;
     Ok(())
   }
 
@@ -95,7 +93,7 @@ impl <'file_sys> State <'file_sys> {
         inode = dir.get_inode();
       },
       _ => {
-        inode = dir.lookup()?;
+        inode = dir.lookup(file_name)?;
         dir.close()?;
       }
     }
@@ -107,15 +105,18 @@ impl <'file_sys> State <'file_sys> {
     File::open(inode)
   }
 
-  pub fn file_sys_remove(path: &str) -> Result<(), FsErrors> {
+  pub fn file_sys_remove(&mut self, path: &str) -> Result<(), FsErrors> {
+    let (directory, file_name) = split_path_filename(path);
+    let dir = Directory::open_path(self, directory)?;
 
+    dir.remove(self, file_name)?;
+    dir.close()
   }
 
-  pub fn file_sys_chdir(path: &str) -> Result<(), FsErrors> {
+  pub fn file_sys_chdir(&mut self, path: &str) -> Result<(), FsErrors> {
+    let dir = Directory::open_path(self, path)?;
 
-  }
-
-  pub fn get_cwd(&self) -> Option<Rc<RefCell<Directory>>> {
-    self.cwd.clone()
+    self.cwd = Some(dir);
+    Ok(())
   }
 }

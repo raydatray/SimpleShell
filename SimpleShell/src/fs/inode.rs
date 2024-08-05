@@ -105,7 +105,7 @@ impl MemoryInode {
     )
   }
 
-  fn byte_to_sector(&self, cache: &Cache, block: &Block, pos: u32) -> Result<BlockSectorT, FsErrors> {
+  fn byte_to_sector(&self, block: &Block, cache: &Cache, pos: u32) -> Result<BlockSectorT, FsErrors> {
     if pos >= self.data.length {
       return Err(FsErrors::PastEOF())
     }
@@ -114,12 +114,12 @@ impl MemoryInode {
     self.data.index_to_sector(cache, block, index)
   }
 
-  pub fn read_at(&mut self, cache: &Cache, block: &Block, buffer: &mut [u8], mut length: u32, mut offset: u32) -> Result<u32, FsErrors> {
+  pub fn read_at(&mut self, block: &Block, cache: &Cache, buffer: &mut [u8], mut length: u32, mut offset: u32) -> Result<u32, FsErrors> {
     let mut bytes_read = 0u32;
     let mut bounce = None;
 
     while length > 0 {
-      let sector_index = self.byte_to_sector(cache, block, offset)?;
+      let sector_index = self.byte_to_sector(block, cache, offset)?;
       let sector_offset = offset % BLOCK_SECTOR_SIZE;
 
       let remaining_inode = self.get_length() - offset;
@@ -149,13 +149,13 @@ impl MemoryInode {
     Ok(bytes_read)
   }
 
-  pub fn write_at(&mut self, cache: &Cache, block: &Block, freemap: &Freemap, buffer: &[u8], mut length: u32, mut offset: u32) -> Result<u32, FsErrors> {
+  pub fn write_at(&mut self, state: &mut State, buffer: &[u8], mut length: u32, mut offset: u32) -> Result<u32, FsErrors> {
     let mut bytes_written = 0u32;
     let mut bounce = None;
 
     if self.deny_write_count { todo!("Return an error or just 0 bytes written?!") }
 
-    if let Err(FsErrors::PastEOF()) = self.byte_to_sector(cache, block, offset + length - 1) {
+    if let Err(FsErrors::PastEOF()) = self.byte_to_sector(&state.block, &state.cache, offset + length - 1) {
       self.data.reserve(cache, block, freemap, offset + length)?;
       self.data.length = offset + length;
 
