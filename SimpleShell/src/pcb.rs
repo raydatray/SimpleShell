@@ -1,12 +1,11 @@
-use std::error::Error;
-use std::fs::File;
-use std::io::{BufRead, BufReader, Seek};
+use std::{
+  io::{BufRead, BufReader, Seek},
+  fs::File
+};
 
 use crate::interpreter::parser;
 use crate::shellmemory::ShellMemory;
-use crate::kernel::Kernel;
 use crate::errors::ShellErrors;
-use crate::errors::ShellErrors::PageFault;
 
 #[derive(Debug)]
 pub struct PCB {
@@ -132,7 +131,7 @@ impl PCB {
 
   pub fn run_process(&mut self, shell_memory: &mut ShellMemory, cwd: &String) -> Result<usize, ShellErrors> {
     if !self.page_table[self.pages_executed].valid_bit[self.frames_executed] {
-      return Err(PageFault(self.pages_executed));
+      return Err(ShellErrors::PageFault(self.pages_executed));
     }
     parser(None, shell_memory, &mut shell_memory.get_value_at(self.page_table[self.pages_executed].index[self.frames_executed]).unwrap(), cwd)?;
     let return_value = self.pages_executed;
@@ -417,7 +416,7 @@ mod pcb_tests {
     created_pcb.evict_page(&mut shell_memory, 1);
 
     for (i, page) in created_pcb.page_table.iter().enumerate() {
-      for (j, frame) in page.index.iter().enumerate() {
+      for (j, _frame) in page.index.iter().enumerate() {
         match i  {
           0 => {
             assert_eq!(page.index[j], j);

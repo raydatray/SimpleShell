@@ -1,6 +1,10 @@
-use std::{fs::{metadata, File, Metadata, OpenOptions}, io::Write, os::{macos::fs::MetadataExt, unix::fs::{FileExt, MetadataExt}}, rc::{Rc, Weak}};
+use std::{
+  fs::{File, OpenOptions},
+  os::unix::fs::FileExt
+};
 
-use super::{block::{Block, BlockSectorT, HardwareOperations, BLOCK_SECTOR_SIZE}, fs_errors::FsErrors};
+use crate::fs::block::{BLOCK_SECTOR_SIZE, BlockSectorT};
+use crate::fs::fs_errors::FsErrors;
 
 const CHANNEL_COUNT: usize = 2usize;
 const DEVICE_COUNT: usize = 2usize;

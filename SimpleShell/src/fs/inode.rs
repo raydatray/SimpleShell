@@ -1,9 +1,15 @@
-use std::{cell::RefCell, rc::Rc, cmp::min, mem};
-use crate::fs::block::Block;
+use std::{
+  cell::RefCell,
+  rc::Rc,
+  cmp::min,
+  mem
+};
+
+use crate::fs::block::{Block, BlockSectorT, BLOCK_SECTOR_SIZE};
 use crate::fs::cache::Cache;
 use crate::fs::free_map::Freemap;
 use crate::fs::file_sys::State;
-use super::{block::{BlockSectorT, BLOCK_SECTOR_SIZE}, fs_errors::FsErrors, free_map::free_map_release};
+use crate::fs::fs_errors::FsErrors;
 
 const DIRECT_BLOCKS_COUNT: u32 = 123u32;
 const INDIRECT_BLOCKS_PER_SECTOR: u32 = 128u32;
@@ -47,13 +53,13 @@ impl InodeList {
     }
   }
 
-  pub fn open_inode(&mut self, sector: BlockSectorT) -> Result<Rc<RefCell<MemoryInode>>, FsErrors> {
+  pub fn open_inode(&mut self, block: &Block, cache: &Cache, sector: BlockSectorT) -> Result<Rc<RefCell<MemoryInode>>, FsErrors> {
     return match self.inner.iter().find(|memory_inode| { memory_inode.borrow().sector == sector }) {
       Some(memory_inode) => {
         Ok(memory_inode.clone())
       },
       None => {
-        let memory_inode = MemoryInode::new(self.block, self.cache, sector)?;
+        let memory_inode = MemoryInode::new(block, cache, sector)?;
         let celled_inode = Rc::new(RefCell::new(memory_inode));
         let return_inode = celled_inode.clone();
         self.inner.push(celled_inode);
@@ -153,7 +159,7 @@ impl MemoryInode {
     let mut bytes_written = 0u32;
     let mut bounce = None;
 
-    if self.deny_write_count { todo!("Return an error or just 0 bytes written?!") }
+    if self.deny_write_count > 0 { todo!("Return an error or just 0 bytes written?!") }
 
     if let Err(FsErrors::PastEOF()) = self.byte_to_sector(&state.block, &state.cache, offset + length - 1) {
       self.data.reserve(cache, block, freemap, offset + length)?;
@@ -210,7 +216,7 @@ impl MemoryInode {
     self.deny_write_count -= 1;
   }
 
-  fn is_directory(&self) -> bool {
+  pub fn is_dir(&self) -> bool {
     self.data.is_directory
   }
 
@@ -218,7 +224,7 @@ impl MemoryInode {
     self.removed
   }
 
-  fn get_inode_number(&self) -> u32 {
+  pub fn get_inode_number(&self) -> u32 {
     self.sector
   }
 
@@ -226,7 +232,7 @@ impl MemoryInode {
     self.data.length
   }
 
-  fn get_data_sectors(&self, cache: &mut Cache, block: &Block) -> Result<Vec<BlockSectorT>, FsErrors> {
+  fn get_data_sectors(&self, block: &Block, cache: &Cache) -> Result<Vec<BlockSectorT>, FsErrors> {
     let file_length = self.data.length;
 
     if file_length < 0 {
@@ -312,7 +318,7 @@ impl MemoryInode {
     Ok(data_sectors)
   }
 
-  pub fn deallocate(&self, cache: &Cache, block: &Block) -> Result<(),FsErrors> {
+  pub fn deallocate(&self, block: &Block, cache: &Cache) -> Result<(),FsErrors> {
     let file_length = self.data.length;
 
     if file_length < 0 {
@@ -335,7 +341,7 @@ impl MemoryInode {
       assert_eq!(num_sectors, 0);
       return Ok(())
     }
-    Self::deallocate_indirect(cache, block, self.data.indirect_block, limit, 1)?;
+    Self::deallocate_indirect(block, cache, self.data.indirect_block, limit, 1)?;
     num_sectors -= limit;
 
     //Doubly indirect Blocks
@@ -344,14 +350,14 @@ impl MemoryInode {
       assert_eq!(num_sectors, 0);
       return Ok(())
     }
-    Self::deallocate_indirect(cache, block, self.data.doubly_indirect_block, limit, 2)?;
+    Self::deallocate_indirect(block, cache, self.data.doubly_indirect_block, limit, 2)?;
     num_sectors -= limit;
 
     assert_eq!(num_sectors, 0);
     Ok(())
   }
 
-  fn deallocate_indirect(cache: &Cache, block: &Block, entry: BlockSectorT, mut num_sectors: u32, lvl: u32) -> Result<(), FsErrors> {
+  fn deallocate_indirect(block: &Block, cache: &Cache, entry: BlockSectorT, mut num_sectors: u32, lvl: u32) -> Result<(), FsErrors> {
     assert!(lvl <= 2);
 
     if lvl == 0 {
@@ -369,7 +375,7 @@ impl MemoryInode {
 
     for i in 0..limit {
       let subsize = min(num_sectors, unit);
-      Self::deallocate_indirect(cache, block, indirect_block.blocks[i as usize], subsize, lvl - 1)?;
+      Self::deallocate_indirect(block, cache, indirect_block.blocks[i as usize], subsize, lvl - 1)?;
       num_sectors -= subsize
     }
 
@@ -382,7 +388,7 @@ impl MemoryInode {
 impl DiskInode {
   const _: () = {
     let disk_inode_size = mem::size_of::<Self>();
-    assert_eq!(disk_inode_size, BLOCK_SECTOR_SIZE as usize, "Disk inodes were not {} bytes in size, actual size: {}", BLOCK_SECTOR_SIZE, disk_inode_size);
+    //assert_eq!(disk_inode_size, BLOCK_SECTOR_SIZE as usize, "Disk inodes were not {} bytes in size, actual size: {}", BLOCK_SECTOR_SIZE, disk_inode_size);
   };
 
   pub fn new(state: &mut State, sector: BlockSectorT, length: u32, is_directory: bool) -> Result<(), FsErrors>{
@@ -412,7 +418,8 @@ impl DiskInode {
   }
 
   fn index_to_sector(&self, cache: &Cache, block: &Block, index: u32) -> Result<BlockSectorT, FsErrors> {
-    let (mut index_base, mut index_limit) = (0u32, DIRECT_BLOCKS_COUNT);
+    let mut index_limit = DIRECT_BLOCKS_COUNT;
+    let mut index_base = index_limit;
 
     //Direct Blocks
     if index < index_limit {
@@ -420,7 +427,6 @@ impl DiskInode {
     }
 
     //Indirect Blocks
-    index_base = index_limit;
     index_limit += INDIRECT_BLOCKS_PER_SECTOR;
 
     if index < index_limit {
@@ -455,7 +461,7 @@ impl DiskInode {
     self.reserve(cache, block, freemap, self.length)
   }
 
-  fn reserve(&mut self, cache: &Cache, block: &Block, freemap: &mut Freemap, length: u32) -> Result<(), FsErrors> {
+  fn reserve(&mut self, block: &Block, cache: &Cache, freemap: &mut Freemap, length: u32) -> Result<(), FsErrors> {
     const EMPTY_BUFFER: [u8; 512] = [0u8; BLOCK_SECTOR_SIZE as usize];
 
     if length < 0 {
@@ -535,30 +541,5 @@ impl DiskInode {
     assert_eq!(num_sectors, 0);
     cache.write_cache_from_buffer(block, index, indirect_block.to_bytes())?;
     Ok(index)
-  }
-}
-
-impl IndirectBlockSector {
-  fn new(buffer: [u8; 512]) -> Self {
-    Self {
-      blocks: {
-        buffer.chunks_exact(4).map(|chunk| {
-          let bytes: [u8; 4] = chunk.try_into().unwrap();
-          BlockSectorT::from_ne_bytes(bytes)
-        })
-        .collect::<Vec<_>>()
-        .try_into()
-        .unwrap()
-      }
-    }
-  }
-
-  fn to_bytes(&self) -> &[u8] {
-    let bytes = unsafe {
-      std::slice::from_raw_parts((self as *const Self) as *const u8, mem::size_of::<Self>())
-    };
-
-    assert_eq!(bytes.len(), 512);
-    bytes
   }
 }

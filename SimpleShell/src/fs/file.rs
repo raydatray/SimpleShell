@@ -1,6 +1,13 @@
-use std::cell::{RefCell, RefMut};
-use std::rc::Rc;
-use super::{free_map::Freemap, fs_errors::FsErrors, inode_dup::{InodeList, MemoryInode}};
+use std::{
+  rc::Rc,
+  cell::RefCell
+};
+
+use crate::fs::block::Block;
+use crate::fs::cache::Cache;
+use crate::fs::free_map::Freemap;
+use crate::fs::fs_errors::FsErrors;
+use crate::fs::inode::{InodeList, MemoryInode};
 
 pub struct FileTable {
   inner: Vec<FileTableEntry>
@@ -12,7 +19,7 @@ struct FileTableEntry {
 }
 
 pub struct File {
-  inode: Option<Rc<RefCell<MemoryInode>>>,
+  inode: Rc<RefCell<MemoryInode>>,
   position: u32,
   deny_write: bool
 }
@@ -64,7 +71,7 @@ impl FileTableEntry {
 impl File {
   pub fn open(inode: Rc<RefCell<MemoryInode>>) -> Self {
     Self {
-      inode: Some(inode),
+      inode,
       position: 0u32,
       deny_write: false
     }
@@ -88,14 +95,14 @@ impl File {
     }
   }
 
-  pub fn read(&mut self, buffer: &mut [u8], size: u32) -> Result<u32, FsErrors> {
-    let bytes_read = self.inode.read_at(cache, block, buffer, size, self.position)?;
+  pub fn read(&mut self, block: &Block, cache: &Cache, buffer: &mut [u8], size: u32) -> Result<u32, FsErrors> {
+    let bytes_read = self.inode.borrow_mut().read_at(block, cache, buffer, size, self.position)?;
     self.position += bytes_read;
     Ok(bytes_read)
   }
 
-  pub fn read_at(&self, buffer: &mut [u8], size: u32, offset: u32) -> Result<u32, FsErrors> {
-    self.inode.read_at(cache, block, buffer, size, offset)
+  pub fn read_at(&self, block: &Block, cache: &Cache, buffer: &mut [u8], size: u32, offset: u32) -> Result<u32, FsErrors> {
+    self.inode.borrow_mut().read_at(block, cache, buffer, size, offset)
   }
 
   pub fn write(&mut self, freemap: &mut Freemap, buffer: &[u8], size: u32) -> Result<u32, FsErrors> {
@@ -111,19 +118,19 @@ impl File {
   fn deny_write(&mut self) {
     if !self.deny_write {
       self.deny_write = true;
-      self.inode.deny_write();
+      self.inode.borrow_mut().deny_write();
     }
   }
 
   fn allow_write(&mut self) {
     if self.deny_write {
       self.deny_write = false;
-      self.inode.allow_write();
+      self.inode.borrow_mut().allow_write();
     }
   }
 
   fn file_length(&self) -> u32 {
-    self.inode.get_inode_length()
+    self.inode.borrow().get_length()
   }
 
   ///From the start of the file

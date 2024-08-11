@@ -1,11 +1,19 @@
-use std::{mem, cell::RefCell};
-use super::{file::File, free_map::Freemap, fs_errors::FsErrors};
+use std::{
+  cell::RefCell,
+  mem
+};
+
+use bytemuck::pod_collect_to_vec;
+
+use crate::fs::file::File;
+use crate::fs::free_map::Freemap;
+use crate::fs::fs_errors::FsErrors;
 
 type ElementType = u32;
 const ELEMENT_BITS: u32 = (mem::size_of::<ElementType>() * u8::BITS as usize) as u32; //How many bits in ElemType
 
 #[inline]
-//Returns the idx of the element that contains the bit numbered bit_idx
+///Returns the index of the element that contains the bit numbered bit_idx
 pub fn element_idx(bit_idx: u32) -> u32 {
   bit_idx / ELEMENT_BITS
 }
@@ -43,13 +51,18 @@ fn bitmap_byte_size(bit_cnt: u32) -> u32 {
   mem::size_of::<Bitmap>() as u32 + byte_cnt(bit_cnt)
 }
 
+///A data structure representing a bitmap, internally comprised of a vector of ElementType's (u32)
+///
+///Each bit may be set individually, by modifying the ElementType that contains it.
+///
+///Ex. [Element 1, Element 2] Element 1 contains bits 0-31, Element 2 contains bits 32-63, etc..
 pub struct Bitmap {
-  bit_cnt: u32, //size_t is type alias for long, 32 bits
+  bit_cnt: u32,
   bits: RefCell<Vec<ElementType>>
 }
 
 impl Bitmap {
-  //Init a new bitmap with all bits set as 0
+  ///Init a new BITMAP of size BIT_CNT with all bits set to 0
   pub fn new(bit_cnt: u32) -> Self {
     let element_count = byte_cnt(bit_cnt);
     Self {
@@ -63,18 +76,14 @@ impl Bitmap {
     todo!();
   }
 
+  ///Init a new BITMAP of size BIT_CNT with all bits set to the values found in the buffer
+  ///
+  ///Safety: the len of BUFFER must equal the byte_cnt of BIT_CNT
   fn new_from_buffer(bit_cnt: u32, buffer: &[u8]) -> Self {
     assert!(!buffer.is_empty());
+    assert_eq!(byte_cnt(bit_cnt) as usize, buffer.len());
 
-    let element_count = byte_cnt(bit_cnt);
-    let mut bits = vec![0; element_count as usize];
-
-    unsafe {
-      std::ptr::copy_nonoverlapping(
-        buffer.as_ptr() as *const ElementType,
-        bits.as_mut_ptr(),
-        element_count as usize);
-    }
+    let bits = pod_collect_to_vec::<u8, ElementType>(buffer);
 
     Self {
       bit_cnt,
@@ -82,18 +91,23 @@ impl Bitmap {
     }
   }
 
+  ///Return the number of BITS contained in the BITMAP
   pub fn get_size(&self) -> u32 {
     self.bit_cnt
   }
 
+  ///Returns a clone of the BITS in the BITMAP
   fn get_bits(&self) -> Vec<ElementType> {
     self.bits.borrow().clone()
   }
 
+  ///Sets the bit @ INDEX to VALUE
+  ///
+  ///Fails if index is out of bounds
   pub fn set(&self, index: u32, value: bool) {
     assert!(index < self.bit_cnt);
 
-    return match value {
+    match value {
       true => {
         self.mark(index);
       },
@@ -137,7 +151,7 @@ impl Bitmap {
     assert!(start <= self.bit_cnt);
     assert!(start + cnt <= self.bit_cnt);
 
-    let _ = (start..start + cnt).map(|i| self.set(start + i, val));
+    (start..start + cnt).for_each(|i| self.set(start + i, val));
   }
 
   pub fn count(&self, start: u32, cnt: u32, val: bool) -> u32 {
@@ -174,7 +188,14 @@ impl Bitmap {
     }
 
     let last = self.bit_cnt - cnt;
-    (start..=last).find(|i| !self.contains(*i, cnt, !val)).ok_or(todo!("Error: no contiguous allocaiton found"))
+    return match (start..=last).find(|i| !self.contains(*i, cnt, !val)) {
+      Some(index) => {
+        Ok(index)
+      },
+      None => {
+        Err(todo!())
+      }
+    }
   }
 
   pub fn scan_and_flip(&self, start: u32, cnt: u32, val: bool) -> Result<u32, FsErrors> {
@@ -195,7 +216,7 @@ impl Bitmap {
 
     assert_eq!(bytes_read, size);
 
-    let read_bits: Vec<ElementType> = bytemuck::allocation::cast_vec(buffer);
+    let mut read_bits: Vec<ElementType> = bytemuck::allocation::cast_vec(buffer);
 
     read_bits[(element_cnt(self.bit_cnt) - 1) as usize] &= last_mask(self);
     self.bits.replace(read_bits);
@@ -204,7 +225,7 @@ impl Bitmap {
 
   pub fn write_to_file(&self, freemap: &mut Freemap, file: &mut File) -> Result<u32, FsErrors>{
     let size = byte_cnt(self.bit_cnt);
-    let bits: Vec<u8> = bytemuck::cast_vec(*self.bits);
+    let bits: Vec<u8> = bytemuck::cast_vec(self.bits.clone().take());
 
     file.write_at(freemap, &bits, size, 0)
   }

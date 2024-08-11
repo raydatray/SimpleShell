@@ -134,9 +134,8 @@ mod shellmemory_tests {
 
   #[test]
   fn test_create() {
-    let total_size = FRAME_STORE_SIZE + VAR_STORE_SIZE;
+    let _total_size = FRAME_STORE_SIZE + VAR_STORE_SIZE;
     let shell_memory = ShellMemory::new(FRAME_STORE_SIZE, VAR_STORE_SIZE);
-
     assert_eq!(shell_memory.frame_store_size, FRAME_STORE_SIZE);
     assert_eq!(shell_memory.var_store_size, VAR_STORE_SIZE);
     assert_eq!(shell_memory.memory.len(), TOTAL_SIZE);
@@ -293,7 +292,7 @@ mod shellmemory_tests {
     let mut index = [999usize, 999usize, 999usize];
     let mut valid_bit = [true, true, true];
 
-    let result = shell_memory.alloc_frame(&pid, &mut index, &mut valid_bit);
+    let _result = shell_memory.alloc_frame(&pid, &mut index, &mut valid_bit);
 
     shell_memory.clear_frame(0);
 
