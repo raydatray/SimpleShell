@@ -5,7 +5,10 @@ use std::{
 
 use bytemuck::pod_collect_to_vec;
 
+use crate::fs::block::Block;
+use crate::fs::cache::Cache;
 use crate::fs::file::File;
+use crate::fs::file_sys::State;
 use crate::fs::free_map::Freemap;
 use crate::fs::fs_errors::FsErrors;
 
@@ -209,10 +212,10 @@ impl Bitmap {
     byte_cnt(self.bit_cnt)
   }
 
-  pub fn read_from_file(&self, file: &mut File) -> Result<u32, FsErrors> {
+  pub fn read_from_file(&self, block: &Block, cache: &Cache, file: &mut File) -> Result<u32, FsErrors> {
     let size = byte_cnt(self.bit_cnt);
     let mut buffer= vec![0u8; size as usize];
-    let bytes_read = file.read_at(&mut buffer, size, 0)?;
+    let bytes_read = file.read_at(block, cache, &mut buffer, size, 0)?;
 
     assert_eq!(bytes_read, size);
 
@@ -223,10 +226,10 @@ impl Bitmap {
     Ok(bytes_read)
   }
 
-  pub fn write_to_file(&self, freemap: &mut Freemap, file: &mut File) -> Result<u32, FsErrors>{
+  pub fn write_to_file(&self, state: &mut State, file: &mut File) -> Result<u32, FsErrors>{
     let size = byte_cnt(self.bit_cnt);
     let bits: Vec<u8> = bytemuck::cast_vec(self.bits.clone().take());
 
-    file.write_at(freemap, &bits, size, 0)
+    file.write_at(state, &bits, size, 0)
   }
 }

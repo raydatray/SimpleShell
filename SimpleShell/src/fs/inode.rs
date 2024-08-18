@@ -5,7 +5,17 @@ use std::{
   mem
 };
 
-use crate::fs::block::{Block, BlockSectorT, BLOCK_SECTOR_SIZE};
+use bytemuck::{
+  from_bytes,
+  Pod,
+  Zeroable
+};
+
+use crate::fs::block::{
+  Block,
+  BlockSectorT,
+  BLOCK_SECTOR_SIZE
+};
 use crate::fs::cache::Cache;
 use crate::fs::free_map::Freemap;
 use crate::fs::file_sys::State;
@@ -27,16 +37,20 @@ pub struct MemoryInode {
   data: DiskInode
 }
 
+#[derive(Copy, Clone, Pod, Zeroable)]
+#[repr(C)]
 pub struct DiskInode {
   direct_blocks: [BlockSectorT; DIRECT_BLOCKS_COUNT as usize],
   indirect_block: BlockSectorT,
   doubly_indirect_block: BlockSectorT,
 
-  is_directory: bool,
+  is_directory: u8, //This is a bool,
   length: u32,
   signature: u32
 }
 
+#[derive(Copy, Clone, Pod, Zeroable)]
+#[repr(transparent)]
 struct IndirectBlockSector {
   blocks: [BlockSectorT; INDIRECT_BLOCKS_PER_SECTOR as usize]
 }
@@ -69,19 +83,19 @@ impl InodeList {
     }
   }
 
-  pub fn close_inode(&mut self, inode: Rc<RefCell<MemoryInode>>) -> Result<(), FsErrors> {
+  pub fn close_inode(self: &mut Self, state: &mut State, inode: Rc<RefCell<MemoryInode>>) -> Result<(), FsErrors> {
     let mut memory_inode = inode.borrow_mut();
     let close_inode =  { memory_inode.open_cnt -= 1; memory_inode.open_cnt == 0 };
 
     if memory_inode.removed {
-      free_map_release(memory_inode.sector, 1);
-      inode.deallocate(self.cache, self.block)?;
+      state.freemap.release(memory_inode.sector, 1);
+      memory_inode.deallocate(&state.block, &state.cache)?;
     }
 
     drop(memory_inode);
 
     if close_inode {
-      return match self.inner.iter().position(|inner_inode| Rc::ptr_eq(inner_inode, inode)) {
+      return match self.inner.iter().position(|inner_inode| Rc::ptr_eq(inner_inode, &inode)) {
         Some(index) => {
           self.inner.remove(index);
           Ok(())
@@ -96,9 +110,9 @@ impl InodeList {
 impl MemoryInode {
   fn new(block: &Block, cache: &Cache, sector: BlockSectorT) -> Result<Self, FsErrors> {
     let mut buffer = [0u8; BLOCK_SECTOR_SIZE as usize];
-    cache.read_cache_to_buffer(block, sector, &mut buffer)?;
+    cache.read_to_buffer(block, sector, &mut buffer)?;
 
-    let disk_inode: DiskInode = unsafe { std::ptr::read(buffer.as_ptr() as *const _) };
+    let disk_inode = from_bytes::<DiskInode>(&buffer).to_owned();
 
     Ok(
       Self {
@@ -137,14 +151,14 @@ impl MemoryInode {
       if chunk_size == 0 { break }
 
       if sector_offset == 0 && chunk_size == BLOCK_SECTOR_SIZE {
-        cache.read_cache_to_buffer(block, sector_index, &mut buffer[bytes_read as usize..(bytes_read + BLOCK_SECTOR_SIZE) as usize])?;
+        cache.read_to_buffer(block, sector_index, &mut buffer[bytes_read as usize..(bytes_read + BLOCK_SECTOR_SIZE) as usize])?;
       } else {
         if bounce.is_none() {
           bounce = Some([0u8; BLOCK_SECTOR_SIZE as usize]);
         }
 
         let bounce = bounce.as_mut().unwrap();
-        cache.read_cache_to_buffer(block, sector_index, bounce)?;
+        cache.read_to_buffer(block, sector_index, bounce)?;
 
         buffer[bytes_read as usize..(bytes_read + chunk_size) as usize].copy_from_slice(&bounce[sector_offset as usize..(sector_offset + chunk_size) as usize]);
       }
@@ -162,14 +176,14 @@ impl MemoryInode {
     if self.deny_write_count > 0 { todo!("Return an error or just 0 bytes written?!") }
 
     if let Err(FsErrors::PastEOF()) = self.byte_to_sector(&state.block, &state.cache, offset + length - 1) {
-      self.data.reserve(cache, block, freemap, offset + length)?;
+      self.data.reserve(&state.block, &state.cache, &mut state.freemap, offset + length)?;
       self.data.length = offset + length;
 
-      cache.write_cache_from_buffer(block, self.sector, self.data.to_bytes())?;
+      state.cache.write_from_buffer(&state.block, self.sector, self.data.to_bytes())?;
     }
 
     while length > 0 {
-      let sector_index = self.byte_to_sector(cache, block, offset)?;
+      let sector_index = self.byte_to_sector(&state.block, &state.cache, offset)?;
       let sector_offset = offset % BLOCK_SECTOR_SIZE;
 
       let remaining_inode = self.get_length() - offset;
@@ -181,7 +195,7 @@ impl MemoryInode {
       if chunk_size == 0 { break }
 
       if sector_offset == 0 && chunk_size == BLOCK_SECTOR_SIZE {
-        cache.write_cache_from_buffer(block, sector_index, &buffer[bytes_written as usize..(bytes_written + BLOCK_SECTOR_SIZE) as usize])?;
+        state.cache.write_from_buffer(&state.block, sector_index, &buffer[bytes_written as usize..(bytes_written + BLOCK_SECTOR_SIZE) as usize])?;
       } else {
         if bounce.is_none() {
           bounce = Some([0u8; BLOCK_SECTOR_SIZE as usize]);
@@ -190,13 +204,13 @@ impl MemoryInode {
         let bounce = bounce.as_mut().unwrap();
 
         if sector_offset > 0 || chunk_size < remaining_sector {
-          cache.read_cache_to_buffer(block, sector_index, bounce)?;
+          state.cache.read_to_buffer(&state.block, sector_index, bounce)?;
         } else {
           bounce.fill(0);
         }
 
         bounce[sector_offset as usize..(sector_offset + chunk_size) as usize].copy_from_slice(&buffer[bytes_written as usize..(bytes_written + chunk_size) as usize]);
-        cache.write_cache_from_buffer(block, sector_index, bounce)?;
+        state.cache.write_from_buffer(&state.block, sector_index, bounce)?;
       }
       length -= chunk_size;
       offset += chunk_size;
@@ -266,7 +280,7 @@ impl MemoryInode {
       }
 
       let mut buffer = [0u8; BLOCK_SECTOR_SIZE as usize];
-      cache.read_cache_to_buffer(block, self.data.indirect_block, &mut buffer)?;
+      cache.read_to_buffer(block, self.data.indirect_block, &mut buffer)?;
 
       let indirect_block = IndirectBlockSector::new(buffer);
       let indirect_limit = limit;
@@ -288,9 +302,10 @@ impl MemoryInode {
       }
 
       let mut buffer = [0u8; BLOCK_SECTOR_SIZE as usize];
-      cache.read_cache_to_buffer(block, self.data.doubly_indirect_block, &mut buffer)?;
+      cache.read_to_buffer(block, self.data.doubly_indirect_block, &mut buffer)?;
 
-      let doubly_indirect_block = IndirectBlockSector::new(buffer);
+
+      let doubly_indirect_block = from_bytes::<IndirectBlockSector>(&buffer);
       let doubly_indirect_limit = limit.div_ceil(INDIRECT_BLOCKS_PER_SECTOR);
 
       let mut num_indirect_sectors = limit;

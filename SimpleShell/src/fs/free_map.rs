@@ -54,12 +54,12 @@ impl Freemap {
     }
   }
 
-  pub fn open_from_file(&mut self, inode_list: &mut InodeList) -> Result<(), FsErrors> {
+  pub fn open_from_file(&mut self, state: &mut State) -> Result<(), FsErrors> {
     assert!(self.file.is_none());
 
-    let freemap_inode = inode_list.open_inode(FREE_MAP_SECTOR)?;
+    let freemap_inode = state.inode_list.open_inode(&state.block, &state.cache, FREE_MAP_SECTOR)?;
     let mut freemap_file = File::open(freemap_inode);
-    self.inner.read_from_file(&mut freemap_file)?;
+    self.inner.read_from_file(&state.block, &state.cache, &mut freemap_file)?;
     self.file = Some(freemap_file);
     Ok(())
   }
@@ -79,10 +79,10 @@ impl Freemap {
   pub fn create_on_disk(state: &mut State) -> Result<(), FsErrors> {
     let size = state.freemap.inner.get_size();
     let _ = DiskInode::new(state, FREE_MAP_SECTOR, size, false)?;
-    let freemap_inode =  state.inode_list.open_inode(FREE_MAP_SECTOR)?;
+    let freemap_inode =  state.inode_list.open_inode(&state.block, &state.cache, FREE_MAP_SECTOR)?;
     let mut freemap_file = File::open(freemap_inode);
 
-    state.freemap.inner.write_to_file(&mut state.freemap, &mut freemap_file)?;
+    state.freemap.inner.write_to_file(&mut state, &mut freemap_file)?;
     Ok(())
   }
 }

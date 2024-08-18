@@ -7,7 +7,11 @@ use crate::fs::block::Block;
 use crate::fs::cache::Cache;
 use crate::fs::free_map::Freemap;
 use crate::fs::fs_errors::FsErrors;
-use crate::fs::inode::{InodeList, MemoryInode};
+use crate::fs::file_sys::State;
+use crate::fs::inode::{
+  InodeList,
+  MemoryInode
+};
 
 pub struct FileTable {
   inner: Vec<FileTableEntry>
@@ -105,14 +109,14 @@ impl File {
     self.inode.borrow_mut().read_at(block, cache, buffer, size, offset)
   }
 
-  pub fn write(&mut self, freemap: &mut Freemap, buffer: &[u8], size: u32) -> Result<u32, FsErrors> {
-    let bytes_written = self.inode.write_at(cache, block, freemap, buffer, size, self.position)?;
+  pub fn write(&mut self, state: &mut State, buffer: &[u8], size: u32) -> Result<u32, FsErrors> {
+    let bytes_written = self.inode.clone().borrow_mut().write_at(state, buffer, size, self.position)?;
     self.position += bytes_written;
     Ok(bytes_written)
   }
 
-  pub fn write_at(&self, freemap: &mut Freemap, buffer: &[u8], size: u32, offset: u32) -> Result<u32, FsErrors> {
-    self.inode.write_at(cache, block, freemap, buffer, size, offset)
+  pub fn write_at(&self, state: &mut State, buffer: &[u8], size: u32, offset: u32) -> Result<u32, FsErrors> {
+    self.inode.clone().borrow_mut().write_at(state, buffer, size, offset)
   }
 
   fn deny_write(&mut self) {
