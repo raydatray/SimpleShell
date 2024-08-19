@@ -1,10 +1,8 @@
-use std::error::Error;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Seek};
 
 use crate::interpreter::parser;
 use crate::shellmemory::ShellMemory;
-use crate::kernel::Kernel;
 use crate::errors::ShellErrors;
 use crate::errors::ShellErrors::PageFault;
 
@@ -161,7 +159,6 @@ mod pcb_tests {
   use super::*;
   pub const FRAME_STORE_SIZE: usize = 12;
   pub const VAR_STORE_SIZE: usize =  4;
-  pub const TOTAL_SIZE: usize = FRAME_STORE_SIZE + VAR_STORE_SIZE;
 
   #[test]
   fn test_create_page() {
@@ -417,7 +414,7 @@ mod pcb_tests {
     created_pcb.evict_page(&mut shell_memory, 1);
 
     for (i, page) in created_pcb.page_table.iter().enumerate() {
-      for (j, frame) in page.index.iter().enumerate() {
+      for (j, _) in page.index.iter().enumerate() {
         match i  {
           0 => {
             assert_eq!(page.index[j], j);

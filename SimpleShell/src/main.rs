@@ -3,6 +3,7 @@ mod interpreter;
 mod kernel;
 mod pcb;
 mod errors;
+mod fs;
 
 use std::io;
 use std::io::Write;
