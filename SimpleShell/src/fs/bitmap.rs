@@ -6,6 +6,9 @@ use std::{
 use bytemuck::pod_collect_to_vec;
 
 use crate::fs::{
+  block::Block,
+  cache::Cache,
+  file::File,
   fserrors::bitmap_errors::BitmapError
 };
 
@@ -67,6 +70,12 @@ impl Bitmap {
     }
   }
 
+  ///Reads from FILE, and writes the read bits into SELF
+  pub fn read_from_file(&self, block: &Block, cache: &Cache, file: &mut File) -> Result<(), BitmapError> {
+    todo!()
+  }
+
+
   ///Return the number of BITS contained in the BITMAP
   pub fn get_size(&self) -> u32 {
     self.bit_cnt
@@ -75,6 +84,10 @@ impl Bitmap {
   ///Returns a clone of the BITS in the BITMAP
   fn get_bits(&self) -> Vec<ElementType> {
     self.inner.borrow().clone()
+  }
+
+  fn get_file_size(&self) -> u32 {
+    byte_cnt(self.bit_cnt)
   }
 
   ///Sets the bit @ IDX to VALUE

@@ -13,6 +13,9 @@ pub(crate) mod bitmap_errors;
 pub(crate) mod block_errors;
 pub(crate) mod cache_errors;
 pub(crate) mod controller_errors;
+pub(crate) mod file_errors;
+pub(crate) mod freemap_errors;
+pub(crate) mod inode_errors;
 
 #[derive(Debug)]
 pub enum FSErrors {

@@ -1,10 +1,15 @@
 use crate::fs::{
   bitmap::Bitmap,
+  block::{
+    BlockSectorT
+  },
   file_sys::{
     FREE_MAP_SECTOR,
-    ROOT_DIR_SECTOR
+    ROOT_DIR_SECTOR,
+    FileSystem
   },
-  file::File
+  file::File,
+  fserrors::freemap_errors::FreemapError,
 };
 
 pub(crate) struct Freemap {
@@ -22,5 +27,18 @@ impl Freemap {
       inner: bitmap,
       file: None
     }
+  }
+
+  pub fn allocate(state: &mut FileSystem, cnt: u32) -> Result<BlockSectorT, FreemapError> {
+    todo!()
+  }
+
+  ///Releases CNT sectors starting from SECTOR, writing the result to file
+  pub fn release(state: &mut FileSystem, sector: BlockSectorT, cnt: u32) -> Result<(), FreemapError> {
+    assert!(state.freemap.inner.all(sector, cnt));
+
+    state.freemap.inner.set_multiple(sector, cnt, false);
+
+    todo!()
   }
 }
