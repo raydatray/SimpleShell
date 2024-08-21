@@ -16,6 +16,7 @@ use super::{
 pub (crate) enum InodeError {
   OffsetOutOfBounds(u32, u32),
   IndexOutOfBounds(u32),
+  InodeNotFound(u32),
   WriteDenied(),
   CacheError(CacheError),
   FreemapError(FreemapError)
@@ -28,6 +29,7 @@ impl Display for InodeError {
     match self {
       Self::OffsetOutOfBounds(offset, actual) => write!(f, "Offset: {} past inode length: {}", offset, actual),
       Self::IndexOutOfBounds(idx) => write!(f, "Index: {} past max inode length", idx),
+      Self::InodeNotFound(inode_num) => write!(f, "Inode with num: {}, not found", inode_num),
       Self::WriteDenied() => write!(f, "Write denied for given inode"),
       Self::CacheError(e) => write!(f, "Cache Error: {:?}", e),
       Self::FreemapError(e) => write!(f, "Freemap Error: {:?}", e)

@@ -2,18 +2,14 @@ use std::{
   cell::RefCell, cmp::min, rc::Rc
 };
 
-use crate::{
-  fs::{
-    block::{
-      Block,
-      BlockSectorT,
-      BLOCK_SECTOR_SIZE
-    },
-    cache::Cache,
-    file_sys::FileSystem,
-    freemap::Freemap,
-    fserrors::inode_errors::InodeError
-  }
+use crate::fs::{
+  block::{
+    Block, BlockSectorT, BLOCK_SECTOR_SIZE
+  },
+  cache::Cache,
+  file_sys::FileSystem,
+  freemap::Freemap,
+  fserrors::inode_errors::InodeError
 };
 
 use bytemuck::{
@@ -23,6 +19,7 @@ use bytemuck::{
 const DIRECT_BLOCKS_CNT: u32 = 123u32;
 const INDIRECT_BLOCKS_PER_SECTOR: u32 = 128u32;
 const INODE_SIGNATURE: u32 = 0x494e4f44;
+const EMPTY_BUFFER: [u8; BLOCK_SECTOR_SIZE as usize] = [0u8; BLOCK_SECTOR_SIZE as usize];
 
 pub(crate) struct InodeList {
   inner: Vec<Rc<RefCell<MemoryInode>>>
@@ -43,6 +40,7 @@ impl InodeList {
   pub fn open_inode(&mut self, block: &Block, cache: &Cache, sector: BlockSectorT) -> Result<Rc<RefCell<MemoryInode>>, InodeError> {
     match self.inner.iter().find(|inode| inode.borrow().sector == sector) {
       Some(inode) => {
+        inode.borrow_mut().open_cnt += 1;
         return Ok(inode.clone())
       },
       None => {
@@ -60,10 +58,34 @@ impl InodeList {
   ///
   ///The caller needs to TAKE the RC containing the inode it wishes to close.
   ///The provided inode will be dropped. If the R-COUNT of that RC is 1 after that operation, we drop it from the INODE LIST
-  pub fn close_inode(&mut self, state: &FileSystem, inode: Rc<RefCell<MemoryInode>>) -> Result<(), InodeError> {
-    todo!()
-  }
+  pub fn close_inode(&mut self, state: &mut FileSystem, inode_num: BlockSectorT) -> Result<(), InodeError> {
+    let mut idx_to_remove = None;
 
+    match self.inner.iter().enumerate().find(|(idx, inode)| inode.borrow().sector == inode_num) {
+      Some((idx, rc_inode)) => {
+        let mut inode = rc_inode.borrow_mut();
+        let close_inode = {
+          inode.open_cnt -= 1;
+          inode.open_cnt == 0
+        };
+
+        if inode.removed() {
+          Freemap::release(state, inode.sector, 1)?;
+          inode.deallocate(state)?;
+        }
+
+        if close_inode {
+          idx_to_remove = Some(idx)
+        }
+      },
+      None => return Err(InodeError::InodeNotFound(inode_num))
+    };
+
+    if let Some(idx) = idx_to_remove {
+      self.inner.remove(idx);
+    }
+    Ok(())
+  }
 }
 
 ///Returns the number of sectors required to contain BYTES
@@ -110,7 +132,7 @@ impl MemoryInode {
     self.removed
   }
 
-  pub fn inode_number(&self) -> BlockSectorT {
+  pub fn inode_num(&self) -> BlockSectorT {
     self.sector
   }
 
@@ -274,10 +296,11 @@ impl MemoryInode {
 
       //If we can read an entire SECTOR
       if sector_ofst == 0 && chunk_size == BLOCK_SECTOR_SIZE as usize {
-        cache.read_to_buffer(block, sector_idx, &mut buffer[bytes_read..(bytes_read + BLOCK_SECTOR_SIZE as usize)])?;
+        let buffer_slice = &mut buffer[bytes_read..(bytes_read + BLOCK_SECTOR_SIZE as usize)];
+        cache.read_to_buffer(block, sector_idx, buffer_slice)?;
       } else {
         if bounce.is_none() {
-          bounce = Some([0u8; BLOCK_SECTOR_SIZE as usize]);
+          bounce = Some(EMPTY_BUFFER);
         }
         let bounce = bounce.as_mut().unwrap();
         cache.read_to_buffer(block, sector_idx,bounce)?;
@@ -292,7 +315,6 @@ impl MemoryInode {
       ofst += chunk_size as u32;
       bytes_read += chunk_size;
     }
-
     Ok(bytes_read as u32)
   }
 
@@ -304,9 +326,47 @@ impl MemoryInode {
 
     //If we need to extend the file
     if let Err(InodeError::OffsetOutOfBounds(_, _)) = self.byte_to_sector(&state.block, &state.cache, ofst + len - 1) {
-
+      self.data.reserve(state, ofst + len)?;
+      self.data.len = ofst + len;
+      state.cache.write_from_buffer(&state.block, self.sector, bytes_of(&self.data))?;
     }
 
+    while len > 0 {
+      let sector_idx = self.byte_to_sector(&state.block, &state.cache, ofst)?;
+      let sector_ofst = (ofst % BLOCK_SECTOR_SIZE) as usize;
+
+      let rmn_inode = self.len() - ofst;
+      let rmn_sector = BLOCK_SECTOR_SIZE as usize - sector_ofst;
+      let rmn_min = min(rmn_inode, rmn_sector as u32);
+
+      let chunk_size = min(len, rmn_min) as usize;
+
+      if chunk_size == 0 { break }
+
+      if sector_ofst == 0 && chunk_size == BLOCK_SECTOR_SIZE as usize {
+        let buffer_slice = &buffer[bytes_wrote..(bytes_wrote + BLOCK_SECTOR_SIZE as usize)];
+        state.cache.write_from_buffer(&state.block, sector_idx, buffer_slice)?;
+      } else {
+        if bounce.is_none() {
+          bounce = Some(EMPTY_BUFFER);
+        }
+        let bounce = bounce.as_mut().unwrap();
+
+        if sector_ofst > 0 || chunk_size < rmn_sector {
+          state.cache.read_to_buffer(&state.block, sector_idx, bounce)?;
+        } else {
+          bounce.fill(0);
+        }
+        let buffer_slice = &buffer[bytes_wrote..(bytes_wrote + chunk_size)];
+        let bounce_slice = &mut bounce[sector_ofst..(sector_ofst + chunk_size)];
+        bounce_slice.copy_from_slice(buffer_slice);
+
+        state.cache.write_from_buffer(&state.block, sector_idx, bounce)?
+      }
+      len -= chunk_size as u32;
+      ofst += chunk_size as u32;
+      bytes_wrote += chunk_size;
+    }
     Ok(bytes_wrote as u32)
   }
 
@@ -383,8 +443,6 @@ impl DiskInode {
   }
 
   fn reserve(&mut self, state: &mut FileSystem, len: u32) -> Result<(), InodeError> {
-    const EMPTY_BUFFER: [u8; BLOCK_SECTOR_SIZE as usize] = [0u8; BLOCK_SECTOR_SIZE as usize];
-
     let mut num_sectors = bytes_to_sectors(len);
     let mut limit = min(num_sectors, DIRECT_BLOCKS_CNT);
     let mut idx;
@@ -424,7 +482,6 @@ impl DiskInode {
   }
 
   fn reserve_indirect(state: &mut FileSystem, mut num_sectors: u32, lvl: u32) -> Result<BlockSectorT, InodeError> {
-    const EMPTY_BUFFER: [u8; BLOCK_SECTOR_SIZE as usize] = [0u8; BLOCK_SECTOR_SIZE as usize];
     assert!(lvl <= 2, "Only double indirection is supported");
 
     let idx;
