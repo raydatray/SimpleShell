@@ -395,6 +395,24 @@ struct DiskInode {
 }
 
 impl DiskInode {
+  fn new(state: &mut FileSystem, sector: BlockSectorT, len: u32, dir: bool) -> Result<(), InodeError> {
+    let mut disk_inode = Self {
+      direct_blocks: [0u32; DIRECT_BLOCKS_CNT as usize],
+      indirect_block: 0u32,
+      doubly_indirect_block: 0u32,
+      is_dir: match dir {
+        false => { 0u8 },
+        true => { 1u8 },
+      },
+      len,
+      sign: INODE_SIGNATURE,
+      _padding: [0u8; 3]
+    };
+
+    disk_inode.allocate(state)?;
+    state.cache.write_from_buffer(&state.block, sector, bytes_of(&disk_inode))?;
+    Ok(())
+  }
   ///Finds the SECTOR that IDX belongs to
   fn idx_to_sector(&self, block: &Block, cache: &Cache, idx: u32) -> Result<BlockSectorT, InodeError> {
     let mut idx_limit = DIRECT_BLOCKS_CNT;
