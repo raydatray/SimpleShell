@@ -15,7 +15,7 @@ use crate::fs::{
 #[derive(Debug)]
 pub(crate) enum BlockError {
   SectorOutOfBounds(BlockSectorT),
-  ControllerError(ControllerError)
+  ControllerError(Box<ControllerError>)
 }
 
 impl Error for BlockError {}
@@ -31,6 +31,6 @@ impl Display for BlockError {
 
 impl From<ControllerError> for BlockError {
   fn from(e: ControllerError) -> Self {
-    Self::ControllerError(e)
+    Self::ControllerError(Box::new(e))
   }
 }

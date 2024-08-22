@@ -21,11 +21,15 @@ const INDIRECT_BLOCKS_PER_SECTOR: u32 = 128u32;
 const INODE_SIGNATURE: u32 = 0x494e4f44;
 const EMPTY_BUFFER: [u8; BLOCK_SECTOR_SIZE as usize] = [0u8; BLOCK_SECTOR_SIZE as usize];
 
+///A data structure that maintains the currently open INODEs
+///
+///All actions related to opening and closing INODEs should be done through this interface
 pub(crate) struct InodeList {
   inner: Vec<Rc<RefCell<MemoryInode>>>
 }
 
 impl InodeList {
+  ///Init a new empty INODELIST
   pub fn new() -> Self {
     Self {
       inner: Vec::new()
@@ -54,10 +58,11 @@ impl InodeList {
     }
   }
 
-  ///Closes the provided INODE.
+  ///Closes the INODE at the given INODE_NUM.
   ///
-  ///The caller needs to TAKE the RC containing the inode it wishes to close.
-  ///The provided inode will be dropped. If the R-COUNT of that RC is 1 after that operation, we drop it from the INODE LIST
+  ///The open_cnt of INODE is decremented. If it is 0, it is removed from the INODELIST
+  ///
+  ///This does not guarantee dropping the INODE, the caller must ensure they go out of scope in order to be dropped
   pub fn close_inode(state: &mut FileSystem, inode_num: BlockSectorT) -> Result<(), InodeError> {
     let mut idx_to_remove = None;
     let mut removed = false;
@@ -103,6 +108,7 @@ fn bytes_to_sectors(bytes: u32) -> u32 {
   bytes.div_ceil(BLOCK_SECTOR_SIZE)
 }
 
+///An in-memory representation of an on-disk INODE
 pub(crate) struct MemoryInode {
   data: DiskInode,
   deny_write_cnt: u32,
@@ -113,6 +119,8 @@ pub(crate) struct MemoryInode {
 
 impl MemoryInode {
   ///Builds a new IN MEMORY INODE for the inode at SECTOR
+  ///
+  ///Reads the DISK INODE at SECTOR
   fn new(block: &Block, cache: &Cache, sector: BlockSectorT) -> Result<Self, InodeError> {
     let mut buffer = [0u8; BLOCK_SECTOR_SIZE as usize];
     cache.read_to_buffer(block, sector, &mut buffer)?;
@@ -160,7 +168,7 @@ impl MemoryInode {
     assert!(self.deny_write_cnt <= self.open_cnt);
   }
 
-  ///Returns a vector of BlockSectorT's that are allocated to SELF
+  ///Returns a vector of BlockSectorT's that are allocated to INODE
   ///
   ///Return values are in-order of visitation
   pub fn data_sectors(&self, block: &Block, cache: &Cache) -> Result<Vec<BlockSectorT>, InodeError> {
@@ -227,6 +235,9 @@ impl MemoryInode {
     panic!("Number of sectors were not 0 at end of traversal");
   }
 
+  ///Deallocates a sectors allocated to INODE by marking them as free on the FREEMAP
+  ///
+  ///This operation does NOT clear the data at those sectors, making them recoverable
   fn deallocate(&self, state: &mut FileSystem) -> Result<(), InodeError> {
     let data_len = self.data.len;
 
@@ -390,6 +401,9 @@ impl MemoryInode {
   }
 }
 
+///An interface to an ON DISK INODE
+///
+///Safety: the size of this struct must be exactly BLOCK_SECTOR_SIZE bytes in size
 #[derive(Clone, Copy, Pod, Zeroable)]
 #[repr(C, packed)]
 struct DiskInode {
@@ -404,6 +418,7 @@ struct DiskInode {
 }
 
 impl DiskInode {
+  ///Creates a new ON DISK INODE at SECTOR with LEN, and writes it to BLOCK
   fn new(state: &mut FileSystem, sector: BlockSectorT, len: u32, dir: bool) -> Result<(), InodeError> {
     let mut disk_inode = Self {
       direct_blocks: [0u32; DIRECT_BLOCKS_CNT as usize],
@@ -422,6 +437,7 @@ impl DiskInode {
     state.cache.write_from_buffer(&state.block, sector, bytes_of(&disk_inode))?;
     Ok(())
   }
+
   ///Finds the SECTOR that IDX belongs to
   fn idx_to_sector(&self, block: &Block, cache: &Cache, idx: u32) -> Result<BlockSectorT, InodeError> {
     let mut idx_limit = DIRECT_BLOCKS_CNT;
@@ -465,6 +481,7 @@ impl DiskInode {
     Err(InodeError::IndexOutOfBounds(idx))
   }
 
+  ///Allocates SELF.LEN bytes on disk
   fn allocate(&mut self, state: &mut FileSystem) -> Result<(), InodeError> {
     self.reserve(state, self.len)
   }

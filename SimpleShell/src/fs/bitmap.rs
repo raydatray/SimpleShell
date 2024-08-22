@@ -3,12 +3,13 @@ use std::{
   mem
 };
 
-use bytemuck::pod_collect_to_vec;
+use bytemuck::{cast_vec, pod_collect_to_vec};
 
 use crate::fs::{
   block::Block,
   cache::Cache,
   file::File,
+  file_sys::FileSystem,
   fserrors::bitmap_errors::BitmapError
 };
 
@@ -50,7 +51,7 @@ pub fn last_mask(bitmap: &Bitmap) -> ElementType {
   }
 }
 
-///A data structure representing a Bitmap, internally comprised of a vector of type ELEMENT_TYPEs (u32s)
+///A data structure representing a Bitmap
 ///
 ///Each bit may be set indivdually by modifying the ELEMENT_TYPE that contains it
 ///
@@ -70,11 +71,21 @@ impl Bitmap {
     }
   }
 
-  ///Reads from FILE, and writes the read bits into SELF
-  pub fn read_from_file(&self, block: &Block, cache: &Cache, file: &mut File) -> Result<(), BitmapError> {
-    todo!()
-  }
+  ///Creates a BITMAP with BIT_CNT bits in BLOCK_SIZE bytes of preallocate storage on BLOCK
+  ///
+  ///Unused
+  fn create_in_buf() -> Self { todo!() }
 
+  ///Creates a BITMAP with BIT_CNT bits from a pre-provided BUFFER
+  fn create_from_buf(bit_cnt: u32, buffer: &[u8]) -> Self {
+    let bitmap = Bitmap::new(bit_cnt);
+    let inner = pod_collect_to_vec::<u8, ElementType>(&buffer);
+
+    assert_eq!(inner.len(), bitmap.inner.borrow().len());
+    bitmap.inner.replace(inner);
+
+    bitmap
+  }
 
   ///Return the number of BITS contained in the BITMAP
   pub fn get_size(&self) -> u32 {
@@ -192,5 +203,31 @@ impl Bitmap {
 
     self.set_multiple(start, cnt, !val);
     Ok(idx)
+  }
+
+  pub fn read_from_file(&self, block: &Block, cache: &Cache, file: &mut File) -> Result<(), BitmapError> {
+    let len = self.get_file_size();
+    let mut buffer = Vec::<u8>::with_capacity(len as usize);
+
+    let bytes_read = file.read_at(block, cache, &mut buffer, len, 0)?;
+
+    assert_eq!(bytes_read, len);
+
+    let mut read_bits = cast_vec::<u8, ElementType>(buffer);
+    read_bits[(element_cnt(self.bit_cnt) - 1) as usize] &= last_mask(self);
+    self.inner.replace(read_bits);
+
+    Ok(())
+  }
+
+  pub fn write_to_file(&self, state: &mut FileSystem, file: &mut File) -> Result<(), BitmapError> {
+    let len = self.get_file_size();
+    let bits = cast_vec::<ElementType, u8>(self.get_bits());
+
+    assert_eq!(len as usize, bits.len());
+
+    let bytes_wrote = file.write_at(state, &bits, len, 0)?;
+    assert_eq!(bytes_wrote, len);
+    Ok(())
   }
 }

@@ -12,7 +12,7 @@ use super::inode_errors::InodeError;
 #[derive(Debug)]
 pub (crate) enum FileError {
   FileNotFound(String),
-  InodeError(InodeError)
+  InodeError(Box<InodeError>)
 }
 
 impl Error for FileError {}
@@ -28,6 +28,6 @@ impl Display for FileError {
 
 impl From<InodeError> for FileError {
   fn from(e: InodeError) -> Self {
-    Self::InodeError(e)
+    Self::InodeError(Box::new(e))
   }
 }

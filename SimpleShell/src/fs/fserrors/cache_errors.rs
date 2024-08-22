@@ -15,7 +15,7 @@ use crate::fs::{
 pub (crate) enum CacheError {
   FlushUnoccupiedEntry(),
   FlushNullDiskSector(),
-  BlockError(BlockError)
+  BlockError(Box<BlockError>)
 }
 
 impl Error for CacheError {}
@@ -32,6 +32,6 @@ impl Display for CacheError {
 
 impl From<BlockError> for CacheError {
   fn from(e: BlockError) -> Self {
-    Self::BlockError(e)
+    Self::BlockError(Box::new(e))
   }
 }

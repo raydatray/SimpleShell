@@ -11,7 +11,7 @@ use super::bitmap_errors::BitmapError;
 
 #[derive(Debug)]
 pub (crate) enum FreemapError {
-  BitmapError(BitmapError)
+  BitmapError(Box<BitmapError>)
 }
 
 
@@ -27,6 +27,6 @@ impl Display for FreemapError {
 
 impl From<BitmapError> for FreemapError {
   fn from(e: BitmapError) -> Self {
-    Self::BitmapError(e)
+    Self::BitmapError(Box::new(e))
   }
 }

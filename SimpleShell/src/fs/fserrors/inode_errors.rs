@@ -18,8 +18,8 @@ pub (crate) enum InodeError {
   IndexOutOfBounds(u32),
   InodeNotFound(u32),
   WriteDenied(),
-  CacheError(CacheError),
-  FreemapError(FreemapError)
+  CacheError(Box<CacheError>),
+  FreemapError(Box<FreemapError>)
 }
 
 impl Error for InodeError {}
@@ -39,12 +39,12 @@ impl Display for InodeError {
 
 impl From<CacheError> for InodeError {
   fn from(e: CacheError) -> Self {
-    Self::CacheError(e)
+    Self::CacheError(Box::new(e))
   }
 }
 
 impl From<FreemapError> for InodeError {
   fn from(e: FreemapError) -> Self {
-    Self::FreemapError(e)
+    Self::FreemapError(Box::new(e))
   }
 }

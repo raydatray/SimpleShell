@@ -1,3 +1,5 @@
+use std::borrow::Borrow;
+
 use crate::fs::{
   bitmap::Bitmap,
   block::{
@@ -12,7 +14,7 @@ use crate::fs::{
   fserrors::freemap_errors::FreemapError,
 };
 
-pub(crate) struct Freemap {
+pub (crate) struct Freemap {
   inner: Bitmap,
   file: Option<File>
 }
@@ -30,7 +32,15 @@ impl Freemap {
   }
 
   pub fn allocate(state: &mut FileSystem, cnt: u32) -> Result<BlockSectorT, FreemapError> {
-    todo!()
+    state.freemap.inner.scan_and_flip(0, cnt, false)?;
+
+    match file {
+      Some(file) => {
+
+      },
+      None =>
+    }
+
   }
 
   ///Releases CNT sectors starting from SECTOR, writing the result to file
@@ -39,6 +49,11 @@ impl Freemap {
 
     state.freemap.inner.set_multiple(sector, cnt, false);
 
-    todo!()
+
+  }
+
+  ///Returns the numebr of free sectors on the FREEMAP
+  pub fn num_free_sectors(&self) -> u32 {
+    self.inner.count(0, self.inner.get_size(), false)
   }
 }
