@@ -58,31 +58,40 @@ impl InodeList {
   ///
   ///The caller needs to TAKE the RC containing the inode it wishes to close.
   ///The provided inode will be dropped. If the R-COUNT of that RC is 1 after that operation, we drop it from the INODE LIST
-  pub fn close_inode(&mut self, state: &mut FileSystem, inode_num: BlockSectorT) -> Result<(), InodeError> {
+  pub fn close_inode(state: &mut FileSystem, inode_num: BlockSectorT) -> Result<(), InodeError> {
     let mut idx_to_remove = None;
+    let mut removed = false;
+    let mut sector = 0;
+    let mut inode_to_deallocate = None;
 
-    match self.inner.iter().enumerate().find(|(idx, inode)| inode.borrow().sector == inode_num) {
+    match state.inode_list.inner.iter().enumerate().find(|(_, inode)| inode.borrow().sector == inode_num) {
       Some((idx, rc_inode)) => {
         let mut inode = rc_inode.borrow_mut();
-        let close_inode = {
-          inode.open_cnt -= 1;
-          inode.open_cnt == 0
-        };
+        inode.open_cnt -= 1;
+        let close_inode = inode.open_cnt == 0;
 
         if inode.removed() {
-          Freemap::release(state, inode.sector, 1)?;
-          inode.deallocate(state)?;
+          removed = true;
+          sector = inode.sector;
+          inode_to_deallocate = Some(rc_inode.clone())
         }
 
         if close_inode {
-          idx_to_remove = Some(idx)
+          idx_to_remove = Some(idx);
         }
       },
       None => return Err(InodeError::InodeNotFound(inode_num))
-    };
+    }
+
+    if removed {
+      Freemap::release(state, sector, 1)?;
+      if let Some(inode) = inode_to_deallocate  {
+        inode.borrow().deallocate(state)?;
+      }
+    }
 
     if let Some(idx) = idx_to_remove {
-      self.inner.remove(idx);
+      state.inode_list.inner.remove(idx);
     }
     Ok(())
   }
