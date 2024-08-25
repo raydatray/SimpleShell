@@ -92,9 +92,13 @@ impl Bitmap {
     self.bit_cnt
   }
 
-  ///Returns a clone of the BITS in the BITMAP
-  fn get_bits(&self) -> Vec<ElementType> {
-    self.inner.borrow().clone()
+  ///Returns a vector of the BITS in the BITMAP
+  pub fn get_bits(&self) -> Vec<u8> {
+    let len = self.get_file_size();
+    let bits = cast_vec::<ElementType, u8>(self.inner.borrow().clone());
+
+    assert_eq!(len as usize, bits.len());
+    bits
   }
 
   fn get_file_size(&self) -> u32 {
@@ -205,7 +209,7 @@ impl Bitmap {
     Ok(idx)
   }
 
-  pub fn read_from_file(&self, block: &Block, cache: &Cache, file: &mut File) -> Result<(), BitmapError> {
+  pub fn read_from_file(&self, block: &Block, cache: &Cache, file: &File) -> Result<(), BitmapError> {
     let len = self.get_file_size();
     let mut buffer = Vec::<u8>::with_capacity(len as usize);
 
@@ -217,17 +221,6 @@ impl Bitmap {
     read_bits[(element_cnt(self.bit_cnt) - 1) as usize] &= last_mask(self);
     self.inner.replace(read_bits);
 
-    Ok(())
-  }
-
-  pub fn write_to_file(&self, state: &mut FileSystem, file: &mut File) -> Result<(), BitmapError> {
-    let len = self.get_file_size();
-    let bits = cast_vec::<ElementType, u8>(self.get_bits());
-
-    assert_eq!(len as usize, bits.len());
-
-    let bytes_wrote = file.write_at(state, &bits, len, 0)?;
-    assert_eq!(bytes_wrote, len);
     Ok(())
   }
 }

@@ -1,5 +1,8 @@
 use std::{
-  cell::RefCell,
+  cell::{
+    Cell,
+    RefCell
+  },
   rc::Rc
 };
 
@@ -81,36 +84,39 @@ impl FileTableEntry {
 
 pub(crate) struct File {
   inode: Rc<RefCell<MemoryInode>>,
-  deny_write: bool,
-  pos: u32
+  deny_write: Cell<bool>,
+  pos: Cell<u32>
 }
 
 impl File {
   pub fn open(inode: Rc<RefCell<MemoryInode>>) -> Self {
     Self {
       inode,
-      deny_write: false,
-      pos: 0u32,
+      deny_write: Cell::new(false),
+      pos: Cell::new(0u32)
     }
   }
 
-  pub fn close(&mut self, state: &mut FileSystem) -> Result<(), FileError> {
+  pub fn close(&self, state: &mut FileSystem) -> Result<(), FileError> {
     self.allow_write();
     let inode_num = self.inode.borrow().inode_num();
     InodeList::close_inode(state, inode_num)?;
     Ok(())
   }
 
-  fn allow_write(&mut self) {
-    if self.deny_write {
-      self.deny_write = false;
+  fn allow_write(&self) {
+    let inner = self.deny_write.take();
+    if inner {
+      self.deny_write.set(false);
       self.inode.borrow_mut().allow_write()
     }
   }
 
-  fn deny_write(&mut self) {
-    if !self.deny_write {
-      self.deny_write = true;
+  fn deny_write(&self) {
+    let inner = self.deny_write.take();
+
+    if !inner {
+      self.deny_write.set(true);
       self.inode.borrow_mut().deny_write()
     }
   }
@@ -119,32 +125,36 @@ impl File {
     self.inode.borrow().len()
   }
 
-  fn seek(&mut self, ofst: u32) {
-    self.pos = ofst
+  fn seek(&self, ofst: u32) {
+    self.pos.set(ofst)
   }
 
   fn tell(&self) -> u32 {
-    self.pos
+    self.pos.get()
   }
 
-  pub fn read(&mut self, block: &Block, cache: &Cache, buffer: &mut [u8], len: u32) -> Result<u32, FileError> {
-    let bytes_read = self.inode.borrow_mut().read_at(block, cache, buffer, len, self.pos)?;
-    self.pos += bytes_read;
+  pub fn read(&self, block: &Block, cache: &Cache, buffer: &mut [u8], len: u32) -> Result<u32, FileError> {
+    let pos = self.pos.get();
+
+    let bytes_read = self.inode.borrow_mut().read_at(block, cache, buffer, len, pos)?;
+    self.pos.set(pos + bytes_read);
     Ok(bytes_read)
   }
 
-  pub fn read_at(&mut self, block: &Block, cache: &Cache, buffer: &mut [u8], len: u32, ofst: u32) -> Result<u32, FileError> {
+  pub fn read_at(&self, block: &Block, cache: &Cache, buffer: &mut [u8], len: u32, ofst: u32) -> Result<u32, FileError> {
     let bytes_read = self.inode.borrow_mut().read_at(block, cache, buffer, len, ofst)?;
     Ok(bytes_read)
   }
 
-  pub fn write(&mut self, state: &mut FileSystem, buffer: &[u8], len: u32) -> Result<u32, FileError> {
-    let bytes_wrote = self.inode.borrow_mut().write_at(state, buffer, len, self.pos)?;
-    self.pos += bytes_wrote;
+  pub fn write(&self, state: &mut FileSystem, buffer: &[u8], len: u32) -> Result<u32, FileError> {
+    let pos = self.pos.get();
+
+    let bytes_wrote = self.inode.borrow_mut().write_at(state, buffer, len, pos)?;
+    self.pos.set(pos + bytes_wrote);
     Ok(bytes_wrote)
   }
 
-  pub fn write_at(&mut self, state: &mut FileSystem, buffer: &[u8], len: u32, ofst: u32) -> Result<u32, FileError> {
+  pub fn write_at(&self, state: &mut FileSystem, buffer: &[u8], len: u32, ofst: u32) -> Result<u32, FileError> {
     let bytes_wrote = self.inode.borrow_mut().write_at(state, buffer, len, ofst)?;
     Ok(bytes_wrote)
   }

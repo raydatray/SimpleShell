@@ -406,7 +406,7 @@ impl MemoryInode {
 ///Safety: the size of this struct must be exactly BLOCK_SECTOR_SIZE bytes in size
 #[derive(Clone, Copy, Pod, Zeroable)]
 #[repr(C, packed)]
-struct DiskInode {
+pub struct DiskInode {
   direct_blocks: [BlockSectorT; DIRECT_BLOCKS_CNT as usize],
   indirect_block: BlockSectorT,
   doubly_indirect_block: BlockSectorT,
@@ -419,7 +419,7 @@ struct DiskInode {
 
 impl DiskInode {
   ///Creates a new ON DISK INODE at SECTOR with LEN, and writes it to BLOCK
-  fn new(state: &mut FileSystem, sector: BlockSectorT, len: u32, dir: bool) -> Result<(), InodeError> {
+  pub fn new(state: &mut FileSystem, sector: BlockSectorT, len: u32, dir: bool) -> Result<(), InodeError> {
     let mut disk_inode = Self {
       direct_blocks: [0u32; DIRECT_BLOCKS_CNT as usize],
       indirect_block: 0u32,
