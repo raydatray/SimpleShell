@@ -30,7 +30,8 @@ pub enum FSErrors {
   DirError(dir_errors::DirError),
   FileError(file_errors::FileError),
   FreemapError(freemap_errors::FreemapError),
-  InodeError(inode_errors::InodeError)
+  InodeError(inode_errors::InodeError),
+  InvalidName(String, usize)
 }
 
 impl Error for FSErrors {}
@@ -44,7 +45,8 @@ impl Display for FSErrors {
       Self::DirError(e) => write!(f, "Dir Error: {:?}", e),
       Self::FileError(e) => write!(f, "File Error: {:?}", e),
       Self::FreemapError(e) => write!(f, "Freemap Error: {:?}", e),
-      Self::InodeError(e) => write!(f, "Inode Error: {:?}", e)
+      Self::InodeError(e) => write!(f, "Inode Error: {:?}", e),
+      Self::InvalidName(name, len) => write!(f, "Invalid name: {}, len: {}, max len 256", name, len)
     }
   }
 }

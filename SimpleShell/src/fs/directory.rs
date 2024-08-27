@@ -1,5 +1,5 @@
 use std::{
-  cell::{RefCell, RefMut}, mem::size_of, rc::Rc
+  cell::{Ref, RefCell, RefMut}, mem::size_of, rc::Rc, str::SplitAsciiWhitespace
 };
 
 use crate::fs::{
@@ -11,7 +11,7 @@ use crate::fs::{
 
 use bytemuck::{from_bytes, bytes_of, Pod, Zeroable};
 
-use super::file_sys::ROOT_DIR_SECTOR;
+use super::{file_sys::ROOT_DIR_SECTOR};
 
 
 const NAME_MAX: usize = 31;
@@ -41,6 +41,10 @@ impl MemoryDirectory {
     }
   }
 
+  pub fn get_inode(dir: Ref<Self>) -> Rc<RefCell<MemoryInode>> {
+    dir.inode.clone()
+  }
+
   pub fn new_on_disk(state: &mut FileSystem, sector: BlockSectorT, entry_cnt: u32) -> Result<(), DirError> {
     let _ = DiskInode::new(state, sector, DIR_ENTRY_SIZE * entry_cnt, true)?;
 
@@ -55,7 +59,7 @@ impl MemoryDirectory {
     Ok(())
   }
 
-  pub fn open_root(state: & mut FileSystem) -> Result<Rc<RefCell<MemoryDirectory>>, DirError> {
+  pub fn open_root(state: &mut FileSystem) -> Result<Rc<RefCell<MemoryDirectory>>, DirError> {
     if state.cwd.is_none() {
       let root_inode = state.inode_list.open_inode(&state.block, &state.cache, ROOT_DIR_SECTOR)?;
       let root_dir = Self::new(root_inode);
@@ -120,21 +124,21 @@ impl MemoryDirectory {
   }
 
 
-  pub fn search(&self, state: &mut FileSystem, pat: &str) -> Result<Rc<RefCell<MemoryInode>>, DirError> {
+  pub fn search(dir: Ref<Self>, state: &mut FileSystem, pat: &str) -> Result<Rc<RefCell<MemoryInode>>, DirError> {
     let mut buffer = [0u8; DIR_ENTRY_SIZE as usize];
 
     match pat {
       "." => {
-        let sector = self.inode.borrow().inode_num();
+        let sector = dir.inode.borrow().inode_num();
         return Ok(state.inode_list.open_inode(&state.block, &state.cache, sector)?)
       },
       ".." => {
-        self.inode.borrow().read_at(&state.block, &state.cache, &mut buffer, DIR_ENTRY_SIZE, 0)?;
+        dir.inode.borrow().read_at(&state.block, &state.cache, &mut buffer, DIR_ENTRY_SIZE, 0)?;
         let entry = from_bytes::<DiskDirectory>(&buffer);
         return Ok(state.inode_list.open_inode(&state.block, &state.cache, entry.sector)?)
       },
       _ => {
-        match self.lookup(state, pat)? {
+        match dir.lookup(state, pat)? {
           Some((entry, _)) => return Ok(state.inode_list.open_inode(&state.block, &state.cache, entry.sector)?),
           None => return Err(DirError::EntryNotFound(pat.to_string()))
         }
@@ -205,8 +209,8 @@ impl MemoryDirectory {
   }
 
   ///Removes an entry with NAME in DIR
-  pub fn remove(&mut self, state: &mut FileSystem, name: &str) -> Result<(), DirError> {
-    match self.lookup(state, name)? {
+  pub fn remove(dir: RefMut<Self>, state: &mut FileSystem, name: &str) -> Result<(), DirError> {
+    match dir.lookup(state, name)? {
       Some((mut sub_entry, ofst)) => {
         let sub_inode = state.inode_list.open_inode(&state.block, &state.cache, sub_entry.sector)?;
 
@@ -218,7 +222,7 @@ impl MemoryDirectory {
         }
 
         sub_entry.in_use = 0u8;
-        let bytes_wrote = self.inode.borrow_mut().write_at(state, bytes_of(&sub_entry), DIR_ENTRY_SIZE, ofst)?;
+        let bytes_wrote = dir.inode.borrow_mut().write_at(state, bytes_of(&sub_entry), DIR_ENTRY_SIZE, ofst)?;
         if bytes_wrote != DIR_ENTRY_SIZE {
           return Err(DirError::CreationFailedBytesMissing())
         }
@@ -227,6 +231,22 @@ impl MemoryDirectory {
       },
       None => return Err(DirError::EntryNotFound(name.to_string()))
     }
+  }
+
+  ///Reads all directory entries in the given DIR and returns in Vec
+  pub fn read(dir: Ref<Self>, state: &mut FileSystem) -> Result<Vec<String>, DirError> {
+    let mut buffer = [0u8; DIR_ENTRY_SIZE as usize];
+    let mut ofst = DIR_ENTRY_SIZE;
+    let mut result = Vec::<String>::new();
+
+    while dir.inode.borrow().read_at(&state.block, &state.cache, &mut buffer, DIR_ENTRY_SIZE, ofst)? == DIR_ENTRY_SIZE {
+      let entry = from_bytes::<DiskDirectory>(&buffer);
+      if entry.in_use == 1u8 {
+        result.push(entry.name_to_string());
+      }
+      ofst += DIR_ENTRY_SIZE;
+    }
+    Ok(result)
   }
 }
 

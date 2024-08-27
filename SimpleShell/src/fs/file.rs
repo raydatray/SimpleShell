@@ -121,15 +121,15 @@ impl File {
     }
   }
 
-  fn len(&self) -> u32 {
+  pub fn len(&self) -> u32 {
     self.inode.borrow().len()
   }
 
-  fn seek(&self, ofst: u32) {
+  pub fn seek(&self, ofst: u32) {
     self.pos.set(ofst)
   }
 
-  fn tell(&self) -> u32 {
+  pub fn tell(&self) -> u32 {
     self.pos.get()
   }
 
