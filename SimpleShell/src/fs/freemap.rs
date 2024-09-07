@@ -12,7 +12,7 @@ use crate::fs::{
 };
 
 pub (crate) struct Freemap {
-  inner: Bitmap,
+  pub inner: Bitmap,
   file: Option<File>
 }
 

@@ -31,7 +31,8 @@ pub enum FSErrors {
   FileError(file_errors::FileError),
   FreemapError(freemap_errors::FreemapError),
   InodeError(inode_errors::InodeError),
-  InvalidName(String, usize)
+  InvalidName(String, usize),
+  IOError(std::io::Error)
 }
 
 impl Error for FSErrors {}
@@ -46,7 +47,8 @@ impl Display for FSErrors {
       Self::FileError(e) => write!(f, "File Error: {:?}", e),
       Self::FreemapError(e) => write!(f, "Freemap Error: {:?}", e),
       Self::InodeError(e) => write!(f, "Inode Error: {:?}", e),
-      Self::InvalidName(name, len) => write!(f, "Invalid name: {}, len: {}, max len 256", name, len)
+      Self::InvalidName(name, len) => write!(f, "Invalid name: {}, len: {}, max len 256", name, len),
+      Self::IOError(e) => write!(f, "IO Error: {}", e)
     }
   }
 }
@@ -78,5 +80,11 @@ impl From<FileError> for FSErrors {
 impl From<InodeError> for FSErrors {
   fn from(e: InodeError) -> Self {
     Self::InodeError(e)
+  }
+}
+
+impl From<std::io::Error> for FSErrors {
+  fn from(e: std::io::Error) -> Self {
+    Self::IOError(e)
   }
 }

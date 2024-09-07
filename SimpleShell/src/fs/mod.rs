@@ -10,7 +10,13 @@ mod fserrors;
 mod inode;
 mod util;
 
+use std::f64::consts::PI;
+
 use clap::{Parser, Subcommand};
+
+use block::Block;
+use file_sys::FileSystem;
+use fserrors::FSErrors;
 
 #[derive(Parser)]
 #[command(name = "fs")]
@@ -92,4 +98,73 @@ pub enum FSSubcommands {
   Defragment {},
   #[command(about = "Recover deleted files")]
   Recover {}
+}
+
+pub struct FSModule<'a> {
+  inner: FileSystem<'a>
+}
+
+impl<'a> FSModule<'a> {
+  pub fn new(block: Block<'a>, fmt: bool) -> Result<Self, FSErrors> {
+    let file_sys = FileSystem::new(block, fmt)?;
+    Ok(
+      Self {
+        inner: file_sys
+      }
+    )
+  }
+
+  pub fn exec_cmd(&mut self, cmd: FSSubcommands) -> Result<(), FSErrors> {
+    match cmd {
+      FSSubcommands::Create { name, size, is_dir } => {
+        self.inner.util_create(&name, size.unwrap_or(0), is_dir)
+      },
+      FSSubcommands::Cat { name } => {
+        self.inner.util_cat(&name)
+      },
+      FSSubcommands::Remove { name } => {
+        self.inner.util_rm(&name)
+      },
+      FSSubcommands::List {} => {
+        self.inner.util_ls()
+      },
+      FSSubcommands::Write { name, content } => {
+        self.inner.util_write(&name, content.as_bytes(), content.len() as u32)
+      },
+      FSSubcommands::Find { pat } => {
+        self.inner.util_find_file(&pat)
+      },
+      FSSubcommands::Read { name, size } => {
+        let mut buffer = vec![0u8; size as usize];
+        self.inner.util_read(&name, &mut buffer, size)?;
+        println!("{}", String::from_utf8_lossy(&buffer));
+        Ok(())
+      },
+      FSSubcommands::CopyIn { name } => {
+        self.inner.util_copy_in(&name)
+      },
+      FSSubcommands::CopyOut { name } => {
+        self.inner.util_copy_out(&name)
+      },
+      FSSubcommands::Size { name } => {
+        self.inner.util_size(&name)
+      },
+      FSSubcommands::Seek { name, ofst } => {
+        self.inner.util_seek(&name, ofst)
+      },
+      FSSubcommands::FreeSpace {} => {
+        self.inner.util_freespace();
+        Ok(())
+      },
+      FSSubcommands::FragmentationDegree {} => {
+        self.inner.util_frag_degree()
+      },
+      FSSubcommands::Defragment {} => {
+        self.inner.util_defrag()
+      },
+      FSSubcommands::Recover {} => {
+        self.inner.util_recover()
+      },
+    }
+  }
 }

@@ -41,8 +41,8 @@ impl MemoryDirectory {
     }
   }
 
-  pub fn get_inode(dir: Ref<Self>) -> Rc<RefCell<MemoryInode>> {
-    dir.inode.clone()
+  pub fn get_inode(&self) -> Rc<RefCell<MemoryInode>> {
+    self.inode.clone()
   }
 
   pub fn new_on_disk(state: &mut FileSystem, sector: BlockSectorT, entry_cnt: u32) -> Result<(), DirError> {
@@ -124,21 +124,21 @@ impl MemoryDirectory {
   }
 
 
-  pub fn search(dir: Ref<Self>, state: &mut FileSystem, pat: &str) -> Result<Rc<RefCell<MemoryInode>>, DirError> {
+  pub fn search(&self, state: &mut FileSystem, pat: &str) -> Result<Rc<RefCell<MemoryInode>>, DirError> {
     let mut buffer = [0u8; DIR_ENTRY_SIZE as usize];
 
     match pat {
       "." => {
-        let sector = dir.inode.borrow().inode_num();
+        let sector = self.inode.borrow().inode_num();
         return Ok(state.inode_list.open_inode(&state.block, &state.cache, sector)?)
       },
       ".." => {
-        dir.inode.borrow().read_at(&state.block, &state.cache, &mut buffer, DIR_ENTRY_SIZE, 0)?;
+        self.inode.borrow().read_at(&state.block, &state.cache, &mut buffer, DIR_ENTRY_SIZE, 0)?;
         let entry = from_bytes::<DiskDirectory>(&buffer);
         return Ok(state.inode_list.open_inode(&state.block, &state.cache, entry.sector)?)
       },
       _ => {
-        match dir.lookup(state, pat)? {
+        match self.lookup(state, pat)? {
           Some((entry, _)) => return Ok(state.inode_list.open_inode(&state.block, &state.cache, entry.sector)?),
           None => return Err(DirError::EntryNotFound(pat.to_string()))
         }
@@ -234,12 +234,12 @@ impl MemoryDirectory {
   }
 
   ///Reads all directory entries in the given DIR and returns in Vec
-  pub fn read(dir: Ref<Self>, state: &mut FileSystem) -> Result<Vec<String>, DirError> {
+  pub fn read_names(&self, state: &mut FileSystem) -> Result<Vec<String>, DirError> {
     let mut buffer = [0u8; DIR_ENTRY_SIZE as usize];
     let mut ofst = DIR_ENTRY_SIZE;
     let mut result = Vec::<String>::new();
 
-    while dir.inode.borrow().read_at(&state.block, &state.cache, &mut buffer, DIR_ENTRY_SIZE, ofst)? == DIR_ENTRY_SIZE {
+    while self.inode.borrow().read_at(&state.block, &state.cache, &mut buffer, DIR_ENTRY_SIZE, ofst)? == DIR_ENTRY_SIZE {
       let entry = from_bytes::<DiskDirectory>(&buffer);
       if entry.in_use == 1u8 {
         result.push(entry.name_to_string());

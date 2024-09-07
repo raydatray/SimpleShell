@@ -142,7 +142,7 @@ impl Bitmap {
     self.inner.borrow_mut()[idx as usize] ^= mask;
   }
 
-  fn test(&self, idx: u32) -> bool {
+  pub fn test(&self, idx: u32) -> bool {
     assert!(idx < self.bit_cnt);
     (self.inner.borrow()[element_idx(idx) as usize] & bit_mask(idx)) != 0
   }

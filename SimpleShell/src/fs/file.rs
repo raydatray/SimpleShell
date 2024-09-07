@@ -133,6 +133,13 @@ impl File {
     self.pos.get()
   }
 
+  pub fn inode(&self, state: &mut FileSystem) -> Result<Rc<RefCell<MemoryInode>>, FileError> {
+    let sector_num = self.inode.borrow().inode_num();
+    let inode = state.inode_list.open_inode(&state.block, &state.cache, sector_num)?;
+
+    Ok(inode)
+  }
+
   pub fn read(&self, block: &Block, cache: &Cache, buffer: &mut [u8], len: u32) -> Result<u32, FileError> {
     let pos = self.pos.get();
 

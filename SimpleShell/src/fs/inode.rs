@@ -18,7 +18,7 @@ use bytemuck::{
 
 const DIRECT_BLOCKS_CNT: u32 = 123u32;
 const INDIRECT_BLOCKS_PER_SECTOR: u32 = 128u32;
-const INODE_SIGNATURE: u32 = 0x494e4f44;
+pub const INODE_SIGNATURE: u32 = 0x494e4f44;
 const EMPTY_BUFFER: [u8; BLOCK_SECTOR_SIZE as usize] = [0u8; BLOCK_SECTOR_SIZE as usize];
 
 ///A data structure that maintains the currently open INODEs
@@ -411,9 +411,9 @@ pub struct DiskInode {
   indirect_block: BlockSectorT,
   doubly_indirect_block: BlockSectorT,
 
-  is_dir: u8, //We need this to satisfy bytemuck
-  len: u32,
-  sign: u32,
+  pub is_dir: u8, //We need this to satisfy bytemuck
+  pub len: u32,
+  pub sign: u32,
   _padding: [u8; 3] //We need this to satisfy bytemuck
 }
 
