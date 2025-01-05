@@ -1,5 +1,6 @@
 use crate::errors::ShellErrors;
 use crate::errors::ShellErrors::*;
+
 #[derive(Clone, Debug)]
 struct MemoryStruct {
   key: Option<String>,
@@ -10,7 +11,6 @@ struct MemoryStruct {
 pub struct ShellMemory {
   memory: Vec<MemoryStruct>,
   frame_store_size: usize,
-  var_store_size: usize
 }
 
 impl MemoryStruct {
@@ -27,7 +27,6 @@ impl ShellMemory {
     ShellMemory {
       memory: vec![MemoryStruct::new(); frame_store_size + var_store_size],
       frame_store_size,
-      var_store_size
     }
   }
 
@@ -53,6 +52,7 @@ impl ShellMemory {
     Err(InitialFrameAllocationFailed)
   }
 
+  #[allow(dead_code)]
   fn clear_frame(&mut self, index: usize) {
     for mem in self.memory[index..index + 3].iter_mut() {
       mem.key = None;
@@ -134,11 +134,9 @@ mod shellmemory_tests {
 
   #[test]
   fn test_create() {
-    let total_size = FRAME_STORE_SIZE + VAR_STORE_SIZE;
     let shell_memory = ShellMemory::new(FRAME_STORE_SIZE, VAR_STORE_SIZE);
 
     assert_eq!(shell_memory.frame_store_size, FRAME_STORE_SIZE);
-    assert_eq!(shell_memory.var_store_size, VAR_STORE_SIZE);
     assert_eq!(shell_memory.memory.len(), TOTAL_SIZE);
 
     for mem in shell_memory.memory {
@@ -293,7 +291,7 @@ mod shellmemory_tests {
     let mut index = [999usize, 999usize, 999usize];
     let mut valid_bit = [true, true, true];
 
-    let result = shell_memory.alloc_frame(&pid, &mut index, &mut valid_bit);
+    let _ = shell_memory.alloc_frame(&pid, &mut index, &mut valid_bit);
 
     shell_memory.clear_frame(0);
 

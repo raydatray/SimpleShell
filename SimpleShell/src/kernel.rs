@@ -1,6 +1,5 @@
 use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
-use std::error::Error;
 
 use crate::errors::ShellErrors;
 use crate::errors::ShellErrors::{CacheError, PageFault, NoFreePages};
@@ -112,7 +111,6 @@ mod kernel_tests {
   use super::*;
   pub const FRAME_STORE_SIZE: usize = 18; //3 files, 2 pages, 3 line each = 18 frame store at a minimum
   pub const VAR_STORE_SIZE: usize =  4;
-  pub const TOTAL_SIZE: usize = FRAME_STORE_SIZE + VAR_STORE_SIZE;
   pub const TEST_FILE_1: &str = "testfiles/test1.txt";
   pub const TEST_FILE_2: &str = "testfiles/test2.txt";
   pub const TEST_FILE_3: &str = "testfiles/test3.txt";
@@ -300,6 +298,6 @@ mod kernel_tests {
       kernel.add_new_process(&mut shell_memory, &script_path.to_string()).unwrap()
     });
 
-    let result = kernel.run_process_fifo(&mut shell_memory, &dummy_cwd);
+    let _ = kernel.run_process_fifo(&mut shell_memory, &dummy_cwd);
   }
 }

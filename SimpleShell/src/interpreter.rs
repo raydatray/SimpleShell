@@ -52,7 +52,7 @@ pub fn top_level_interpreter(kernel: &mut Kernel, shell_memory: &mut ShellMemory
   }
 }
 
-pub fn interpreter(shell_memory: &mut ShellMemory, arguments: &Vec<String>, num_of_args: usize, cwd: &String) -> Result<(), ShellErrors> {
+pub fn interpreter(shell_memory: &mut ShellMemory, arguments: &Vec<String>, num_of_args: usize, _cwd: &String) -> Result<(), ShellErrors> {
   match arguments.first().unwrap().as_str() {
     "help" => {
       println!("Help!");
@@ -100,12 +100,4 @@ pub fn interpreter(shell_memory: &mut ShellMemory, arguments: &Vec<String>, num_
       Ok(())
     }
   }
-}
-
-#[cfg(test)]
-mod interpreter_tests {
-  use super::*;
-  pub const FRAME_STORE_SIZE: usize = 6;
-  pub const VAR_STORE_SIZE: usize =  4;
-  pub const TOTAL_SIZE: usize = FRAME_STORE_SIZE + VAR_STORE_SIZE;
 }
